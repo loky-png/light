@@ -11,7 +11,12 @@ declare global {
   }
 }
 
-export default function TitleBar() {
+interface TitleBarProps {
+  onLogout?: () => void
+  username?: string
+}
+
+export default function TitleBar({ onLogout, username }: TitleBarProps) {
   const minimize = () => window.lightAPI?.minimize()
   const maximize = () => window.lightAPI?.maximize()
   const close = () => window.lightAPI?.close()
@@ -19,8 +24,13 @@ export default function TitleBar() {
   return (
     <div className="titlebar">
       <div className="titlebar-drag" />
-      <span className="titlebar-title">Light</span>
+      <span className="titlebar-title">Light {username ? `· ${username}` : ''}</span>
       <div className="titlebar-controls">
+        {onLogout && (
+          <button className="tb-btn tb-logout" onClick={onLogout} title="Выйти" style={{background:'none',border:'none',color:'var(--text-muted)',cursor:'pointer',fontSize:'13px',padding:'0 8px'}}>
+            выйти
+          </button>
+        )}
         <button className="tb-btn tb-close" onClick={close} title="Закрыть">
           <span />
         </button>

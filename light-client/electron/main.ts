@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from 'electron'
+import { app, BrowserWindow, ipcMain, session } from 'electron'
 import path from 'path'
 
 function createWindow() {
@@ -13,6 +13,7 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.js'),
+      webSecurity: false,
     },
   })
 
@@ -24,7 +25,18 @@ function createWindow() {
   ipcMain.on('window-close', () => win.close())
 }
 
-app.whenReady().then(createWindow)
+app.whenReady().then(() => {
+  // Разрешаем запросы к серверу
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': ["default-src 'self' 'unsafe-inline' 'unsafe-eval' http://135.212.167.68:3000 ws://135.212.167.68:3000"]
+      }
+    })
+  })
+  createWindow()
+})
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()

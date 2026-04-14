@@ -9,6 +9,7 @@ db.exec(`
     username TEXT UNIQUE NOT NULL,
     display_name TEXT NOT NULL,
     password_hash TEXT NOT NULL,
+    public_key TEXT,
     created_at INTEGER DEFAULT (unixepoch())
   );
 
