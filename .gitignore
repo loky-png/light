@@ -1,0 +1,12 @@
+node_modules/
+dist/
+electron-dist/
+release/
+*.db
+.env
+light-client/node_modules/
+light-client/dist/
+light-client/electron-dist/
+light-client/release/
+light-server/node_modules/
+light-server/dist/
