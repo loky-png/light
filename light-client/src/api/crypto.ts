@@ -1,5 +1,14 @@
 import nacl from 'tweetnacl'
-import { encodeUTF8, decodeUTF8, encodeBase64, decodeBase64 } from 'tweetnacl-util'
+import { encodeBase64, decodeBase64 } from 'tweetnacl-util'
+
+// Правильные функции для работы с UTF-8
+function encodeUTF8(str: string): Uint8Array {
+  return new TextEncoder().encode(str)
+}
+
+function decodeUTF8(arr: Uint8Array): string {
+  return new TextDecoder().decode(arr)
+}
 
 export function generateKeyPair() {
   return nacl.box.keyPair()

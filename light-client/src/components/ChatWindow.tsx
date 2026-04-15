@@ -2,37 +2,6 @@ import { useState, useRef, useEffect } from 'react'
 import type { Message } from '../types'
 import './ChatWindow.css'
 
-const t = (minAgo: number) => new Date(Date.now() - minAgo * 60000)
-
-const MOCK_MESSAGES: Record<string, Message[]> = {
-  '1': [
-    { id: '1-1', chatId: '1', senderId: '2', text: 'Привет! Как дела?', createdAt: t(60), read: true },
-    { id: '1-2', chatId: '1', senderId: 'me', text: 'Всё отлично, работаю над проектом 🔥', createdAt: t(58), read: true },
-    { id: '1-3', chatId: '1', senderId: '2', text: 'Над каким?', createdAt: t(55), read: true },
-    { id: '1-4', chatId: '1', senderId: 'me', text: 'Делаю свой мессенджер на Electron + React + TypeScript', createdAt: t(50), read: true },
-    { id: '1-5', chatId: '1', senderId: '2', text: 'Серьёзно? Как называется?', createdAt: t(45), read: true },
-    { id: '1-6', chatId: '1', senderId: 'me', text: 'Light ☀️', createdAt: t(40), read: true },
-    { id: '1-7', chatId: '1', senderId: '2', text: 'Красиво звучит! Когда релиз?', createdAt: t(2), read: false },
-  ],
-  '2': [
-    { id: '2-1', chatId: '2', senderId: '3', text: 'Привет, ты свободна сегодня вечером?', createdAt: t(120), read: true },
-    { id: '2-2', chatId: '2', senderId: 'me', text: 'Да, а что случилось?', createdAt: t(115), read: true },
-    { id: '2-3', chatId: '3', senderId: '3', text: 'Хотел встретиться, обсудить проект', createdAt: t(110), read: true },
-    { id: '2-4', chatId: '2', senderId: 'me', text: 'Окей, в 7 вечера подойдёт?', createdAt: t(105), read: true },
-    { id: '2-5', chatId: '2', senderId: '3', text: 'Окей, договорились 👍', createdAt: t(100), read: true },
-  ],
-  '3': [
-    { id: '3-1', chatId: '3', senderId: '4', text: 'Всем привет! Деплой прошёл успешно 🚀', createdAt: t(180), read: true },
-    { id: '3-2', chatId: '3', senderId: '5', text: 'Отлично! Наконец-то', createdAt: t(175), read: true },
-    { id: '3-3', chatId: '3', senderId: 'me', text: 'Проверил — всё работает', createdAt: t(170), read: true },
-    { id: '3-4', chatId: '3', senderId: '4', text: 'Теперь займёмся новым функционалом', createdAt: t(160), read: true },
-    { id: '3-5', chatId: '3', senderId: '5', text: 'Какие задачи на этой неделе?', createdAt: t(150), read: true },
-    { id: '3-6', chatId: '3', senderId: '4', text: 'Авторизация, чаты, уведомления', createdAt: t(140), read: true },
-    { id: '3-7', chatId: '3', senderId: 'me', text: 'Беру авторизацию на себя', createdAt: t(130), read: true },
-    { id: '3-8', chatId: '3', senderId: '5', text: 'Я займусь уведомлениями', createdAt: t(10), read: false },
-  ],
-}
-
 interface ChatWindowProps {
   chatId: string
   chatName: string
