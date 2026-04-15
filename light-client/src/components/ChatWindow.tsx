@@ -38,21 +38,21 @@ interface ChatWindowProps {
   chatName: string
   isOnline: boolean
   onMessageSent?: () => void
+  currentUserId: string
 }
 
 function formatTime(date: Date): string {
   return date.toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' })
 }
 
-export default function ChatWindow({ chatId, chatName, isOnline, onMessageSent }: ChatWindowProps) {
+export default function ChatWindow({ chatId, chatName, isOnline, onMessageSent, currentUserId }: ChatWindowProps) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(true)
   const bottomRef = useRef<HTMLDivElement>(null)
-  const currentUser = JSON.parse(localStorage.getItem('light-user') || '{}')
-  const userId = currentUser.id
+  const userId = currentUserId
 
-  console.log('ChatWindow userId:', userId, 'currentUser:', currentUser)
+  console.log('ChatWindow userId:', userId)
 
   useEffect(() => {
     loadMessages()

@@ -177,6 +177,7 @@ export default function App() {
                 chatName={chats.find(c => c.id === selectedChatId)?.name || 'Чат'}
                 isOnline={false}
                 onMessageSent={loadChats}
+                currentUserId={user.id}
               />
             ) : (
               <div className="empty-state">
