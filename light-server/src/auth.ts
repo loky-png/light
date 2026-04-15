@@ -8,7 +8,7 @@ const router = Router()
 const JWT_SECRET = process.env.JWT_SECRET || 'light-secret-change-in-prod'
 
 router.post('/register', async (req: Request, res: Response) => {
-  const { username, password, displayName, publicKey } = req.body
+  const { username, password, displayName } = req.body
   if (!username || !password || !displayName) {
     return res.status(400).json({ error: 'Заполните все поля' })
   }
@@ -23,11 +23,11 @@ router.post('/register', async (req: Request, res: Response) => {
 
   const hash = await bcrypt.hash(password, 10)
   const id = randomUUID()
-  db.prepare('INSERT INTO users (id, username, display_name, password_hash, public_key) VALUES (?, ?, ?, ?, ?)')
-    .run(id, username, displayName, hash, publicKey || null)
+  db.prepare('INSERT INTO users (id, username, display_name, password_hash) VALUES (?, ?, ?, ?)')
+    .run(id, username, displayName, hash)
 
   const token = jwt.sign({ id, username }, JWT_SECRET, { expiresIn: '30d' })
-  return res.json({ token, user: { id, username, displayName, publicKey } })
+  return res.json({ token, user: { id, username, displayName } })
 })
 
 router.post('/login', async (req: Request, res: Response) => {
