@@ -37,13 +37,14 @@ interface ChatWindowProps {
   chatId: string
   chatName: string
   isOnline: boolean
+  onMessageSent?: () => void
 }
 
 function formatTime(date: Date): string {
   return date.toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' })
 }
 
-export default function ChatWindow({ chatId, chatName, isOnline }: ChatWindowProps) {
+export default function ChatWindow({ chatId, chatName, isOnline, onMessageSent }: ChatWindowProps) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(true)
@@ -119,6 +120,11 @@ export default function ChatWindow({ chatId, chatName, isOnline }: ChatWindowPro
         socket.emit('message:send', { chatId, text })
         setInput('')
         console.log('Message sent:', { chatId, text })
+        
+        // Обновляем список чатов
+        if (onMessageSent) {
+          setTimeout(() => onMessageSent(), 500)
+        }
       } else {
         console.error('Socket not connected')
         alert('Нет соединения с сервером. Перезапустите приложение.')

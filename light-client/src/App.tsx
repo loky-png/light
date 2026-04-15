@@ -66,7 +66,12 @@ export default function App() {
       
       if (result.ok) {
         const chatList = JSON.parse(result.text)
-        setChats(chatList)
+        // Фильтруем чаты с самим собой
+        const filtered = chatList.filter((chat: any) => {
+          // Проверяем что это не чат с самим собой
+          return chat.name !== user?.displayName
+        })
+        setChats(filtered)
       }
     } catch (err) {
       console.error('Load chats error:', err)
@@ -74,7 +79,16 @@ export default function App() {
   }
 
   const handleChatCreated = (chat: any) => {
-    setChats(prev => [chat, ...prev])
+    // Проверяем что чата еще нет в списке и это не чат с самим собой
+    if (chat.name === user?.displayName) {
+      console.log('Cannot create chat with yourself')
+      return
+    }
+    
+    const exists = chats.find(c => c.id === chat.id)
+    if (!exists) {
+      setChats(prev => [chat, ...prev])
+    }
     setSelectedChatId(chat.id)
   }
 
@@ -172,6 +186,7 @@ export default function App() {
                 chatId={selectedChatId}
                 chatName={chats.find(c => c.id === selectedChatId)?.name || 'Чат'}
                 isOnline={false}
+                onMessageSent={loadChats}
               />
             ) : (
               <div className="empty-state">
