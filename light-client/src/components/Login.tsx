@@ -30,26 +30,33 @@ export default function Login({ onLogin }: LoginProps) {
         ? { username, password }
         : { username, password, displayName, publicKey: getPublicKeyBase64() }
 
-      const controller = new AbortController()
-      const timeout = setTimeout(() => controller.abort(), 10000)
-      const res = await fetch(`${API_URL}/api/auth/${mode}`, {
+      // Используем Electron net.fetch через IPC или обычный fetch
+      const doFetch = async (url: string, opts: RequestInit) => {
+        const w = window as Window & { lightAPI?: { fetch: (u: string, o: RequestInit) => Promise<{ok: boolean, status: number, text: string}> } }
+        console.log('lightAPI available:', !!w.lightAPI?.fetch)
+        if (w.lightAPI?.fetch) {
+          const r = await w.lightAPI.fetch(url, opts)
+          console.log('IPC response:', r.status, r.text.slice(0, 100))
+          if (!r.ok) throw new Error(JSON.parse(r.text).error || 'Ошибка')
+          return JSON.parse(r.text)
+        }
+        console.log('Using regular fetch')
+        const res = await fetch(url, opts)
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error || 'Ошибка')
+        return data
+      }
+
+      const data = await doFetch(`${API_URL}/api/auth/${mode}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
-        signal: controller.signal,
       })
-      clearTimeout(timeout)
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Ошибка')
       localStorage.setItem('light-token', data.token)
       localStorage.setItem('light-user', JSON.stringify(data.user))
       onLogin(data.token, data.user)
     } catch (e: unknown) {
-      if (e instanceof Error && e.name === 'AbortError') {
-        setError('Сервер не отвечает. Проверьте подключение.')
-      } else {
-        setError(e instanceof Error ? e.message : 'Ошибка подключения')
-      }
+      setError(e instanceof Error ? e.message : 'Ошибка подключения')
     } finally {
       setLoading(false)
     }
