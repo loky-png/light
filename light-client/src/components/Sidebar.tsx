@@ -5,7 +5,7 @@ import './Sidebar.css'
 interface SidebarProps {
   selectedChatId: string | null
   onSelectChat: (id: string) => void
-  currentUser: { displayName: string; username: string; avatar?: string | null }
+  currentUser: { id: string; displayName: string; username: string; avatar?: string | null }
   onLogout: () => void
   onUpdateProfile: (displayName: string, username: string, avatar: string | null) => void
 }
@@ -69,7 +69,9 @@ export default function Sidebar({ currentUser, onLogout, onUpdateProfile }: Side
       
       if (result.ok) {
         const users = JSON.parse(result.text)
-        setSearchResults(users)
+        // Фильтруем текущего пользователя
+        const filtered = users.filter((u: any) => u.id !== currentUser.id)
+        setSearchResults(filtered)
       }
     } catch (err) {
       console.error('Search error:', err)
@@ -94,8 +96,8 @@ export default function Sidebar({ currentUser, onLogout, onUpdateProfile }: Side
         setSearch('')
         setSearchResults([])
         setIsSearching(false)
-        // TODO: открыть чат
-        console.log('Chat created:', data.chat)
+        // Открываем созданный чат
+        onSelectChat(data.chat.id)
       }
     } catch (err) {
       console.error('Create chat error:', err)
