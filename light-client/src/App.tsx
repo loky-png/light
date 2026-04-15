@@ -15,18 +15,19 @@ interface AuthUser {
 }
 
 export default function App() {
-  const [token, setToken] = useState<string | null>(() => localStorage.getItem('light-token'))
-  const [user, setUser] = useState<AuthUser | null>(() => {
-    const u = localStorage.getItem('light-user')
-    return u ? JSON.parse(u) : null
-  })
+  const [token, setToken] = useState<string | null>(null)
+  const [user, setUser] = useState<AuthUser | null>(null)
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null)
   const [chats, setChats] = useState<any[]>([])
   const [isValidating, setIsValidating] = useState(true)
 
   useEffect(() => {
     const validateToken = async () => {
-      if (!token) {
+      // Читаем данные из localStorage при загрузке
+      const storedToken = localStorage.getItem('light-token')
+      const storedUser = localStorage.getItem('light-user')
+      
+      if (!storedToken || !storedUser) {
         setIsValidating(false)
         return
       }
@@ -34,21 +35,26 @@ export default function App() {
       try {
         const lightAPI = (window as any).lightAPI
         const result = await lightAPI.fetch('http://155.212.167.68:80/api/auth/validate', {
-          headers: { 'Authorization': `Bearer ${token}` }
+          headers: { 'Authorization': `Bearer ${storedToken}` }
         })
 
         if (!result.ok) {
           // Токен невалидный - выходим
-          localStorage.removeItem('light-token')
-          localStorage.removeItem('light-user')
+          localStorage.clear()
           setToken(null)
           setUser(null)
         } else {
+          // Токен валидный - устанавливаем состояние
+          setToken(storedToken)
+          setUser(JSON.parse(storedUser))
           // Загружаем список чатов
-          loadChats()
+          loadChats(storedToken)
         }
       } catch (err) {
         console.error('Token validation error:', err)
+        localStorage.clear()
+        setToken(null)
+        setUser(null)
       } finally {
         setIsValidating(false)
       }
@@ -57,11 +63,14 @@ export default function App() {
     validateToken()
   }, [])
 
-  const loadChats = async () => {
+  const loadChats = async (authToken?: string) => {
     try {
       const lightAPI = (window as any).lightAPI
+      const tkn = authToken || token
+      if (!tkn) return
+      
       const result = await lightAPI.fetch('http://155.212.167.68:80/api/chats', {
-        headers: { 'Authorization': `Bearer ${token}` }
+        headers: { 'Authorization': `Bearer ${tkn}` }
       })
       
       if (result.ok) {
@@ -94,16 +103,41 @@ export default function App() {
   }, [token])
 
   const handleLogin = (t: string, u: AuthUser) => {
+    // Полностью очищаем старые данные
+    localStorage.clear()
+    
+    // Сохраняем новые данные
+    localStorage.setItem('light-token', t)
+    localStorage.setItem('light-user', JSON.stringify(u))
+    
     setToken(t)
     setUser(u)
+    setSelectedChatId(null)
+    setChats([])
+    
+    // Переподключаем socket с новым токеном
+    const oldSocket = (window as any).socket
+    if (oldSocket) {
+      oldSocket.disconnect()
+    }
     connectSocket(t)
   }
 
   const handleLogout = () => {
-    localStorage.removeItem('light-token')
-    localStorage.removeItem('light-user')
+    // Полностью очищаем localStorage
+    localStorage.clear()
+    
+    // Отключаем socket
+    const socket = (window as any).socket
+    if (socket) {
+      socket.disconnect()
+      ;(window as any).socket = null
+    }
+    
     setToken(null)
     setUser(null)
+    setSelectedChatId(null)
+    setChats([])
   }
 
   const handleUpdateProfile = async (displayName: string, username: string, avatar: string | null) => {
