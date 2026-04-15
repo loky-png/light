@@ -130,9 +130,19 @@ app.post('/api/chats/direct', (req, res) => {
   const { userId } = req.body
   if (!userId) return res.status(400).json({ error: 'userId required' })
   
+  console.log('Creating chat:', { currentUserId: user.id, targetUserId: userId })
+  
   // Запрещаем создание чата с самим собой
   if (userId === user.id) {
+    console.error('Attempt to create self-chat:', user.id)
     return res.status(400).json({ error: 'Cannot create chat with yourself' })
+  }
+
+  // Проверяем что целевой пользователь существует
+  const targetUser = db.prepare('SELECT id, username, display_name, avatar FROM users WHERE id = ?').get(userId) as any
+  if (!targetUser) {
+    console.error('Target user not found:', userId)
+    return res.status(404).json({ error: 'User not found' })
   }
 
   // Проверяем существует ли уже чат между этими пользователями
@@ -146,17 +156,18 @@ app.post('/api/chats/direct', (req, res) => {
   `).get(user.id, userId) as any
 
   if (existingChat) {
+    console.log('Chat already exists:', existingChat.id)
     return res.json({ chat: existingChat })
   }
 
   // Создаем новый чат
   const chatId = randomUUID()
-  const otherUser = db.prepare('SELECT username, display_name FROM users WHERE id = ?').get(userId) as any
   
-  db.prepare('INSERT INTO chats (id, type, name) VALUES (?, ?, ?)').run(chatId, 'direct', otherUser.display_name)
+  db.prepare('INSERT INTO chats (id, type, name) VALUES (?, ?, ?)').run(chatId, 'direct', targetUser.display_name)
   db.prepare('INSERT INTO chat_members (chat_id, user_id) VALUES (?, ?), (?, ?)').run(chatId, user.id, chatId, userId)
 
-  return res.json({ chat: { id: chatId, type: 'direct', name: otherUser.display_name } })
+  console.log('Chat created:', chatId)
+  return res.json({ chat: { id: chatId, type: 'direct', name: targetUser.display_name } })
 })
 
 // REST: получить список чатов пользователя
@@ -165,6 +176,7 @@ app.get('/api/chats', (req, res) => {
   const user = token ? verifyToken(token) : null
   if (!user) return res.status(401).json({ error: 'Unauthorized' })
 
+  // Получаем чаты с информацией о собеседнике для direct чатов
   const chats = db.prepare(`
     SELECT c.id, c.name, c.type,
       (SELECT text FROM messages WHERE chat_id = c.id ORDER BY created_at DESC LIMIT 1) as last_message,
@@ -174,9 +186,32 @@ app.get('/api/chats', (req, res) => {
     JOIN chat_members cm ON cm.chat_id = c.id
     WHERE cm.user_id = ?
     ORDER BY last_message_time DESC
-  `).all(user.id, user.id)
+  `).all(user.id, user.id) as any[]
 
-  return res.json(chats)
+  // Для direct чатов добавляем аватар собеседника
+  const enrichedChats = chats.map(chat => {
+    if (chat.type === 'direct') {
+      // Находим собеседника
+      const otherMember = db.prepare(`
+        SELECT u.id, u.avatar, u.display_name
+        FROM chat_members cm
+        JOIN users u ON u.id = cm.user_id
+        WHERE cm.chat_id = ? AND cm.user_id != ?
+        LIMIT 1
+      `).get(chat.id, user.id) as any
+      
+      if (otherMember) {
+        return {
+          ...chat,
+          avatar: otherMember.avatar,
+          name: otherMember.display_name || chat.name
+        }
+      }
+    }
+    return chat
+  })
+
+  return res.json(enrichedChats)
 })
 
 // REST: получить сообщения чата
@@ -185,6 +220,15 @@ app.get('/api/chats/:chatId/messages', (req, res) => {
   const user = token ? verifyToken(token) : null
   if (!user) return res.status(401).json({ error: 'Unauthorized' })
 
+  const { chatId } = req.params
+  
+  // Проверяем что пользователь является участником чата
+  const member = db.prepare('SELECT * FROM chat_members WHERE chat_id = ? AND user_id = ?').get(chatId, user.id)
+  if (!member) {
+    console.error('User not a member of chat:', user.id, chatId)
+    return res.status(403).json({ error: 'Not a member' })
+  }
+
   const messages = db.prepare(`
     SELECT m.*, u.username, u.display_name
     FROM messages m
@@ -192,8 +236,9 @@ app.get('/api/chats/:chatId/messages', (req, res) => {
     WHERE m.chat_id = ?
     ORDER BY m.created_at ASC
     LIMIT 100
-  `).all(req.params.chatId)
+  `).all(chatId)
 
+  console.log(`Loaded ${messages.length} messages for chat ${chatId}, user ${user.id}`)
   return res.json(messages)
 })
 
@@ -227,18 +272,32 @@ io.on('connection', (socket) => {
   // Отправка сообщения
   socket.on('message:send', ({ chatId, text }: { chatId: string; text: string }) => {
     if (!text?.trim()) return
+    
+    // Проверяем что пользователь является участником чата
+    const member = db.prepare('SELECT * FROM chat_members WHERE chat_id = ? AND user_id = ?').get(chatId, user.id)
+    if (!member) {
+      console.error('User not a member of chat:', user.id, chatId)
+      return
+    }
+    
     const id = randomUUID()
     const now = Math.floor(Date.now() / 1000)
+    
+    console.log('Saving message:', { id, chatId, senderId: user.id, text: text.trim() })
     db.prepare('INSERT INTO messages (id, chat_id, sender_id, text, created_at) VALUES (?, ?, ?, ?, ?)')
       .run(id, chatId, user.id, text.trim(), now)
 
     const msg = {
-      id, chatId, text: text.trim(),
+      id, 
+      chatId, 
+      text: text.trim(),
       senderId: user.id,
       username: user.username,
       createdAt: now * 1000,
       read: false,
     }
+    
+    console.log('Broadcasting message:', msg)
     io.to(chatId).emit('message:new', msg)
   })
 
