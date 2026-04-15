@@ -11,24 +11,21 @@ export default function Login({ onLogin }: LoginProps) {
   const [mode, setMode] = useState<'login' | 'register'>('login')
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
-  const [firstName, setFirstName] = useState('')
-  const [lastName, setLastName] = useState('')
+  const [displayName, setDisplayName] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
   const submit = async () => {
     setError('')
     if (mode === 'register') {
-      if (!firstName.trim()) return setError('Введите имя')
-      if (!lastName.trim()) return setError('Введите фамилию')
+      if (!displayName.trim()) return setError('Введите имя')
       if (username.length < 4) return setError('Юзернейм минимум 4 символа')
     }
     setLoading(true)
     try {
-      const displayName = mode === 'register' ? `${firstName.trim()} ${lastName.trim()}` : ''
       const body = mode === 'login'
         ? { username, password }
-        : { username, password, displayName, publicKey: getPublicKeyBase64() }
+        : { username, password, displayName: displayName.trim(), publicKey: getPublicKeyBase64() }
 
       // Используем Electron net.fetch через IPC или обычный fetch
       const doFetch = async (url: string, opts: RequestInit) => {
@@ -76,22 +73,13 @@ export default function Login({ onLogin }: LoginProps) {
         </p>
 
         {mode === 'register' && (
-          <div style={{display:'flex', gap:'8px', width:'100%'}}>
-            <input
-              className="login-input"
-              placeholder="Имя"
-              value={firstName}
-              onChange={e => setFirstName(e.target.value)}
-              onKeyDown={handleKey}
-            />
-            <input
-              className="login-input"
-              placeholder="Фамилия"
-              value={lastName}
-              onChange={e => setLastName(e.target.value)}
-              onKeyDown={handleKey}
-            />
-          </div>
+          <input
+            className="login-input"
+            placeholder="Имя (можно с фамилией)"
+            value={displayName}
+            onChange={e => setDisplayName(e.target.value)}
+            onKeyDown={handleKey}
+          />
         )}
         <div className="login-input-wrap">
           {mode === 'register' && <span className="login-at">@</span>}
