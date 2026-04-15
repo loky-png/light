@@ -8,9 +8,11 @@ interface SidebarProps {
   currentUser: { id: string; displayName: string; username: string; avatar?: string | null }
   onLogout: () => void
   onUpdateProfile: (displayName: string, username: string, avatar: string | null) => void
+  chats: any[]
+  onChatCreated: (chat: any) => void
 }
 
-export default function Sidebar({ onSelectChat, currentUser, onLogout, onUpdateProfile }: SidebarProps) {
+export default function Sidebar({ onSelectChat, currentUser, onLogout, onUpdateProfile, chats, onChatCreated }: SidebarProps) {
   const [search, setSearch] = useState('')
   const [showSettings, setShowSettings] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
@@ -96,8 +98,8 @@ export default function Sidebar({ onSelectChat, currentUser, onLogout, onUpdateP
         setSearch('')
         setSearchResults([])
         setIsSearching(false)
-        // Открываем созданный чат
-        onSelectChat(data.chat.id)
+        // Добавляем чат в список и открываем
+        onChatCreated(data.chat)
       }
     } catch (err) {
       console.error('Create chat error:', err)
@@ -202,12 +204,29 @@ export default function Sidebar({ onSelectChat, currentUser, onLogout, onUpdateP
       )}
 
       <ul className="chat-list">
-        {!isSearching && (
+        {!isSearching && chats.length === 0 && (
           <div className="empty-chats">
             <p>Нет чатов</p>
             <span>Найдите пользователя чтобы начать общение</span>
           </div>
         )}
+        {!isSearching && chats.map(chat => (
+          <li key={chat.id} className={`chat-item ${selectedChatId === chat.id ? 'active' : ''}`} onClick={() => onSelectChat(chat.id)}>
+            <div className="chat-avatar">
+              {chat.name?.split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2) || 'CH'}
+            </div>
+            <div className="chat-info">
+              <div className="chat-top">
+                <span className="chat-name">{chat.name || 'Чат'}</span>
+                {chat.last_message_time && <span className="chat-time">{new Date(chat.last_message_time * 1000).toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' })}</span>}
+              </div>
+              <div className="chat-bottom">
+                <span className="chat-preview">{chat.last_message || 'Нет сообщений'}</span>
+                {chat.unread > 0 && <span className="unread-badge">{chat.unread}</span>}
+              </div>
+            </div>
+          </li>
+        ))}
       </ul>
     </aside>
   )

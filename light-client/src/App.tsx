@@ -21,6 +21,7 @@ export default function App() {
     return u ? JSON.parse(u) : null
   })
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null)
+  const [chats, setChats] = useState<any[]>([])
   const [isValidating, setIsValidating] = useState(true)
 
   useEffect(() => {
@@ -42,6 +43,9 @@ export default function App() {
           localStorage.removeItem('light-user')
           setToken(null)
           setUser(null)
+        } else {
+          // Загружаем список чатов
+          loadChats()
         }
       } catch (err) {
         console.error('Token validation error:', err)
@@ -52,6 +56,27 @@ export default function App() {
 
     validateToken()
   }, [])
+
+  const loadChats = async () => {
+    try {
+      const lightAPI = (window as any).lightAPI
+      const result = await lightAPI.fetch('http://155.212.167.68:80/api/chats', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      
+      if (result.ok) {
+        const chatList = JSON.parse(result.text)
+        setChats(chatList)
+      }
+    } catch (err) {
+      console.error('Load chats error:', err)
+    }
+  }
+
+  const handleChatCreated = (chat: any) => {
+    setChats(prev => [chat, ...prev])
+    setSelectedChatId(chat.id)
+  }
 
   useEffect(() => {
     if (token) connectSocket(token)
@@ -130,12 +155,14 @@ export default function App() {
             currentUser={user}
             onLogout={handleLogout}
             onUpdateProfile={handleUpdateProfile}
+            chats={chats}
+            onChatCreated={handleChatCreated}
           />
           <main className="main">
             {selectedChatId ? (
               <ChatWindow
                 chatId={selectedChatId}
-                chatName={selectedChatId}
+                chatName={chats.find(c => c.id === selectedChatId)?.name || 'Чат'}
                 isOnline={false}
               />
             ) : (
