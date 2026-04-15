@@ -184,12 +184,9 @@
 }
 
 .chat-delete-btn {
-  position: absolute;
-  right: 10px;
-  top: 50%;
-  transform: translateY(-50%);
   width: 24px;
   height: 24px;
+  min-width: 24px;
   border-radius: 50%;
   background: rgba(255, 71, 87, 0.1);
   border: 1px solid rgba(255, 71, 87, 0.3);
@@ -200,6 +197,7 @@
   align-items: center;
   justify-content: center;
   transition: all 0.2s ease;
+  margin-left: 8px;
 }
 
 .chat-item:hover .chat-delete-btn {
@@ -209,11 +207,7 @@
 .chat-delete-btn:hover {
   background: rgba(255, 71, 87, 0.2);
   border-color: #ff4757;
-  transform: translateY(-50%) scale(1.1);
-}
-
-.chat-item {
-  position: relative;
+  transform: scale(1.1);
 }
 
 .sidebar-actions {

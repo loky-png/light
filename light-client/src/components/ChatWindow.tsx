@@ -113,9 +113,15 @@ export default function ChatWindow({ chatId, chatName, isOnline }: ChatWindowPro
     
     try {
       const socket = (window as any).socket
-      if (socket) {
+      console.log('Sending message, socket:', !!socket, 'connected:', socket?.connected)
+      
+      if (socket && socket.connected) {
         socket.emit('message:send', { chatId, text })
         setInput('')
+        console.log('Message sent:', { chatId, text })
+      } else {
+        console.error('Socket not connected')
+        alert('Нет соединения с сервером. Перезапустите приложение.')
       }
     } catch (err) {
       console.error('Send message error:', err)

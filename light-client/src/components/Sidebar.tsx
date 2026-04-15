@@ -56,7 +56,10 @@ export default function Sidebar({ selectedChatId, onSelectChat, currentUser, onL
 
   const handleDeleteChat = async (chatId: string, e: React.MouseEvent) => {
     e.stopPropagation()
-    if (!confirm('Удалить чат?')) return
+    
+    // Простое подтверждение без блокировки
+    const confirmed = window.confirm('Удалить чат?')
+    if (!confirmed) return
     
     try {
       const lightAPI = (window as any).lightAPI
@@ -244,20 +247,22 @@ export default function Sidebar({ selectedChatId, onSelectChat, currentUser, onL
           </div>
         )}
         {!isSearching && chats.map(chat => (
-          <li key={chat.id} className={`chat-item ${selectedChatId === chat.id ? 'active' : ''}`}>
-            <div onClick={() => onSelectChat(chat.id)} style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1 }}>
-              <div className="chat-avatar">
-                {chat.name?.split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2) || 'CH'}
+          <li key={chat.id} className={`chat-item ${selectedChatId === chat.id ? 'active' : ''}`} onClick={() => onSelectChat(chat.id)}>
+            <div className="chat-avatar">
+              {chat.avatar ? (
+                <img src={chat.avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} />
+              ) : (
+                chat.name?.split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2) || 'CH'
+              )}
+            </div>
+            <div className="chat-info">
+              <div className="chat-top">
+                <span className="chat-name">{chat.name || 'Чат'}</span>
+                {chat.last_message_time && <span className="chat-time">{new Date(chat.last_message_time * 1000).toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' })}</span>}
               </div>
-              <div className="chat-info">
-                <div className="chat-top">
-                  <span className="chat-name">{chat.name || 'Чат'}</span>
-                  {chat.last_message_time && <span className="chat-time">{new Date(chat.last_message_time * 1000).toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' })}</span>}
-                </div>
-                <div className="chat-bottom">
-                  <span className="chat-preview">{chat.last_message || 'Нет сообщений'}</span>
-                  {chat.unread > 0 && <span className="unread-badge">{chat.unread}</span>}
-                </div>
+              <div className="chat-bottom">
+                <span className="chat-preview">{chat.last_message || 'Нет сообщений'}</span>
+                {chat.unread > 0 && <span className="unread-badge">{chat.unread}</span>}
               </div>
             </div>
             <button className="chat-delete-btn" onClick={(e) => handleDeleteChat(chat.id, e)} title="Удалить чат">
