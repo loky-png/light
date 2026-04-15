@@ -78,6 +78,13 @@ export default function App() {
     setSelectedChatId(chat.id)
   }
 
+  const handleChatDeleted = (chatId: string) => {
+    setChats(prev => prev.filter(c => c.id !== chatId))
+    if (selectedChatId === chatId) {
+      setSelectedChatId(null)
+    }
+  }
+
   useEffect(() => {
     if (token) connectSocket(token)
   }, [token])
@@ -157,6 +164,7 @@ export default function App() {
             onUpdateProfile={handleUpdateProfile}
             chats={chats}
             onChatCreated={handleChatCreated}
+            onChatDeleted={handleChatDeleted}
           />
           <main className="main">
             {selectedChatId ? (

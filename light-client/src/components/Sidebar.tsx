@@ -10,9 +10,10 @@ interface SidebarProps {
   onUpdateProfile: (displayName: string, username: string, avatar: string | null) => void
   chats: any[]
   onChatCreated: (chat: any) => void
+  onChatDeleted: (chatId: string) => void
 }
 
-export default function Sidebar({ selectedChatId, onSelectChat, currentUser, onLogout, onUpdateProfile, chats, onChatCreated }: SidebarProps) {
+export default function Sidebar({ selectedChatId, onSelectChat, currentUser, onLogout, onUpdateProfile, chats, onChatCreated, onChatDeleted }: SidebarProps) {
   const [search, setSearch] = useState('')
   const [showSettings, setShowSettings] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
@@ -51,6 +52,26 @@ export default function Sidebar({ selectedChatId, onSelectChat, currentUser, onL
     setEditName(currentUser.displayName)
     setEditUsername(currentUser.username)
     setIsEditing(false)
+  }
+
+  const handleDeleteChat = async (chatId: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (!confirm('Удалить чат?')) return
+    
+    try {
+      const lightAPI = (window as any).lightAPI
+      const token = localStorage.getItem('light-token')
+      const result = await lightAPI.fetch(`http://155.212.167.68:80/api/chats/${chatId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      
+      if (result.ok) {
+        onChatDeleted(chatId)
+      }
+    } catch (err) {
+      console.error('Delete chat error:', err)
+    }
   }
 
   const handleSearch = async (query: string) => {
@@ -98,8 +119,20 @@ export default function Sidebar({ selectedChatId, onSelectChat, currentUser, onL
         setSearch('')
         setSearchResults([])
         setIsSearching(false)
-        // Добавляем чат в список и открываем
-        onChatCreated(data.chat)
+        
+        // Проверяем есть ли уже такой чат в списке
+        const existingChat = chats.find(c => c.id === data.chat.id)
+        if (!existingChat) {
+          onChatCreated(data.chat)
+        } else {
+          // Просто открываем существующий чат
+          onSelectChat(data.chat.id)
+        }
+      } else {
+        const error = JSON.parse(result.text)
+        if (error.error === 'Cannot create chat with yourself') {
+          alert('Нельзя создать чат с самим собой')
+        }
       }
     } catch (err) {
       console.error('Create chat error:', err)
@@ -227,8 +260,8 @@ export default function Sidebar({ selectedChatId, onSelectChat, currentUser, onL
                 </div>
               </div>
             </div>
-            <button className="chat-delete-btn" onClick={(e) => { e.stopPropagation(); handleDeleteChat(chat.id); }} title="Удалить чат">
-              🗑️
+            <button className="chat-delete-btn" onClick={(e) => handleDeleteChat(chat.id, e)} title="Удалить чат">
+              ✕
             </button>
           </li>
         ))}
