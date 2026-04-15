@@ -17,6 +17,8 @@ export default function Sidebar({ currentUser, onLogout, onUpdateProfile }: Side
   const [editName, setEditName] = useState(currentUser.displayName)
   const [editUsername, setEditUsername] = useState(currentUser.username)
   const [avatarUrl, setAvatarUrl] = useState<string | null>(currentUser.avatar || null)
+  const [searchResults, setSearchResults] = useState<any[]>([])
+  const [isSearching, setIsSearching] = useState(false)
   const { theme, toggleTheme } = useTheme()
 
   const getInitials = (name: string) => {
@@ -43,6 +45,57 @@ export default function Sidebar({ currentUser, onLogout, onUpdateProfile }: Side
     setEditName(currentUser.displayName)
     setEditUsername(currentUser.username)
     setIsEditing(false)
+  }
+
+  const handleSearch = async (query: string) => {
+    setSearch(query)
+    if (query.length < 2) {
+      setSearchResults([])
+      setIsSearching(false)
+      return
+    }
+
+    setIsSearching(true)
+    try {
+      const lightAPI = (window as any).lightAPI
+      const token = localStorage.getItem('light-token')
+      const result = await lightAPI.fetch(`http://155.212.167.68:80/api/users/search?q=${encodeURIComponent(query)}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      
+      if (result.ok) {
+        const users = JSON.parse(result.text)
+        setSearchResults(users)
+      }
+    } catch (err) {
+      console.error('Search error:', err)
+    }
+  }
+
+  const handleSelectUser = async (userId: string) => {
+    try {
+      const lightAPI = (window as any).lightAPI
+      const token = localStorage.getItem('light-token')
+      const result = await lightAPI.fetch('http://155.212.167.68:80/api/chats/direct', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ userId })
+      })
+      
+      if (result.ok) {
+        const data = JSON.parse(result.text)
+        setSearch('')
+        setSearchResults([])
+        setIsSearching(false)
+        // TODO: открыть чат
+        console.log('Chat created:', data.chat)
+      }
+    } catch (err) {
+      console.error('Create chat error:', err)
+    }
   }
 
   return (
@@ -119,14 +172,36 @@ export default function Sidebar({ currentUser, onLogout, onUpdateProfile }: Side
       )}
 
       <div className="sidebar-search">
-        <input type="text" placeholder="Поиск" value={search} onChange={e => setSearch(e.target.value)} />
+        <input type="text" placeholder="Поиск" value={search} onChange={e => handleSearch(e.target.value)} />
       </div>
 
-      <ul className="chat-list">
-        <div className="empty-chats">
-          <p>Нет чатов</p>
-          <span>Найдите пользователя чтобы начать общение</span>
+      {isSearching && searchResults.length > 0 && (
+        <div className="search-results">
+          {searchResults.map(user => (
+            <div key={user.id} className="search-result-item" onClick={() => handleSelectUser(user.id)}>
+              <div className="search-avatar">
+                {user.avatar ? (
+                  <img src={user.avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                ) : (
+                  user.display_name.split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2)
+                )}
+              </div>
+              <div className="search-info">
+                <div className="search-name">{user.display_name}</div>
+                <div className="search-username">@{user.username}</div>
+              </div>
+            </div>
+          ))}
         </div>
+      )}
+
+      <ul className="chat-list">
+        {!isSearching && (
+          <div className="empty-chats">
+            <p>Нет чатов</p>
+            <span>Найдите пользователя чтобы начать общение</span>
+          </div>
+        )}
       </ul>
     </aside>
   )

@@ -41,22 +41,21 @@ export default function App() {
 
   const handleUpdateProfile = async (displayName: string, username: string, avatar: string | null) => {
     try {
-      const response = await fetch('http://155.212.167.68:80/api/profile', {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ displayName, username, avatar })
-      })
+      const lightAPI = (window as any).lightAPI
+      if (!lightAPI?.updateProfile) {
+        alert('Ошибка: API недоступен')
+        return
+      }
 
-      if (!response.ok) {
-        const error = await response.json()
+      const result = await lightAPI.updateProfile(token, { displayName, username, avatar })
+      
+      if (!result.ok) {
+        const error = JSON.parse(result.text)
         alert(error.error || 'Ошибка обновления профиля')
         return
       }
 
-      const data = await response.json()
+      const data = JSON.parse(result.text)
       const updatedUser = data.user
       setUser(updatedUser)
       localStorage.setItem('light-user', JSON.stringify(updatedUser))
@@ -77,7 +76,7 @@ export default function App() {
   return (
     <ThemeProvider>
       <div className="app">
-        <TitleBar onLogout={handleLogout} username={user.displayName} />
+        <TitleBar username={user.displayName} />
         <div className="app-body">
           <Sidebar 
             selectedChatId={selectedChatId} 

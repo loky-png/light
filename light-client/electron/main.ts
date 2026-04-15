@@ -59,6 +59,26 @@ function createWindow() {
       throw e
     }
   })
+
+  // Обновление профиля
+  ipcMain.handle('update-profile', async (_event, token: string, data: { displayName: string; username: string; avatar: string | null }) => {
+    try {
+      const url = 'http://155.212.167.68:80/api/profile'
+      console.log('[Main] Update profile:', url, data.displayName, data.username)
+      const result = await httpRequest(url, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(data)
+      })
+      return result
+    } catch (e) {
+      console.error('[Main] Profile update error:', e)
+      throw e
+    }
+  })
 }
 
 app.whenReady().then(createWindow)

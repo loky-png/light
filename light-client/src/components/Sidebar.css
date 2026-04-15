@@ -439,3 +439,58 @@
 .empty-chats span {
   font-size: 13px;
 }
+
+.search-results {
+  max-height: 400px;
+  overflow-y: auto;
+  border-bottom: 1px solid var(--glass-border);
+}
+
+.search-result-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  margin: 2px 8px;
+  border-radius: 16px;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.search-result-item:hover {
+  background: var(--glass-hover);
+  backdrop-filter: blur(10px);
+}
+
+.search-avatar {
+  width: 48px;
+  height: 48px;
+  min-width: 48px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent), #7b5ea7);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 16px;
+  box-shadow: 0 4px 12px var(--shadow);
+  overflow: hidden;
+}
+
+.search-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.search-name {
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--text-primary);
+  margin-bottom: 2px;
+}
+
+.search-username {
+  font-size: 13px;
+  color: var(--text-muted);
+}

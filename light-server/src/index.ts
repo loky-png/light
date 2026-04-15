@@ -57,6 +57,60 @@ app.put('/api/profile', (req, res) => {
   })
 })
 
+// REST: поиск пользователей
+app.get('/api/users/search', (req, res) => {
+  const token = req.headers.authorization?.split(' ')[1]
+  const user = token ? verifyToken(token) : null
+  if (!user) return res.status(401).json({ error: 'Unauthorized' })
+
+  const query = req.query.q as string
+  if (!query || query.length < 2) {
+    return res.json([])
+  }
+
+  const users = db.prepare(`
+    SELECT id, username, display_name, avatar
+    FROM users
+    WHERE username LIKE ? AND id != ?
+    LIMIT 20
+  `).all(`%${query}%`, user.id)
+
+  return res.json(users)
+})
+
+// REST: создать или получить direct чат
+app.post('/api/chats/direct', (req, res) => {
+  const token = req.headers.authorization?.split(' ')[1]
+  const user = token ? verifyToken(token) : null
+  if (!user) return res.status(401).json({ error: 'Unauthorized' })
+
+  const { userId } = req.body
+  if (!userId) return res.status(400).json({ error: 'userId required' })
+
+  // Проверяем существует ли уже чат между этими пользователями
+  const existingChat = db.prepare(`
+    SELECT c.id, c.name, c.type
+    FROM chats c
+    JOIN chat_members cm1 ON cm1.chat_id = c.id AND cm1.user_id = ?
+    JOIN chat_members cm2 ON cm2.chat_id = c.id AND cm2.user_id = ?
+    WHERE c.type = 'direct'
+    LIMIT 1
+  `).get(user.id, userId) as any
+
+  if (existingChat) {
+    return res.json({ chat: existingChat })
+  }
+
+  // Создаем новый чат
+  const chatId = randomUUID()
+  const otherUser = db.prepare('SELECT username, display_name FROM users WHERE id = ?').get(userId) as any
+  
+  db.prepare('INSERT INTO chats (id, type, name) VALUES (?, ?, ?)').run(chatId, 'direct', otherUser.display_name)
+  db.prepare('INSERT INTO chat_members (chat_id, user_id) VALUES (?, ?), (?, ?)').run(chatId, user.id, chatId, userId)
+
+  return res.json({ chat: { id: chatId, type: 'direct', name: otherUser.display_name } })
+})
+
 // REST: получить список чатов пользователя
 app.get('/api/chats', (req, res) => {
   const token = req.headers.authorization?.split(' ')[1]
