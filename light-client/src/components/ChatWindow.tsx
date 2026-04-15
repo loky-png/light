@@ -92,6 +92,7 @@ export default function ChatWindow({ chatId, chatName, isOnline, onMessageSent }
       
       if (result.ok) {
         const msgs = JSON.parse(result.text)
+        console.log('Loaded messages:', msgs.length, msgs)
         setMessages(msgs.map((m: any) => ({
           id: m.id,
           chatId: m.chat_id,
@@ -100,6 +101,8 @@ export default function ChatWindow({ chatId, chatName, isOnline, onMessageSent }
           createdAt: new Date(m.created_at * 1000),
           read: m.read === 1
         })))
+      } else {
+        console.error('Failed to load messages:', result.status, result.text)
       }
     } catch (err) {
       console.error('Load messages error:', err)

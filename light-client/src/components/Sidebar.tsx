@@ -22,6 +22,7 @@ export default function Sidebar({ selectedChatId, onSelectChat, currentUser, onL
   const [avatarUrl, setAvatarUrl] = useState<string | null>(currentUser.avatar || null)
   const [searchResults, setSearchResults] = useState<any[]>([])
   const [isSearching, setIsSearching] = useState(false)
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
   const { theme, toggleTheme } = useTheme()
 
   const getInitials = (name: string) => {
@@ -56,24 +57,27 @@ export default function Sidebar({ selectedChatId, onSelectChat, currentUser, onL
 
   const handleDeleteChat = async (chatId: string, e: React.MouseEvent) => {
     e.stopPropagation()
-    
-    // Простое подтверждение без блокировки
-    const confirmed = window.confirm('Удалить чат?')
-    if (!confirmed) return
+    setDeleteConfirm(chatId)
+  }
+
+  const confirmDelete = async () => {
+    if (!deleteConfirm) return
     
     try {
       const lightAPI = (window as any).lightAPI
       const token = localStorage.getItem('light-token')
-      const result = await lightAPI.fetch(`http://155.212.167.68:80/api/chats/${chatId}`, {
+      const result = await lightAPI.fetch(`http://155.212.167.68:80/api/chats/${deleteConfirm}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
       })
       
       if (result.ok) {
-        onChatDeleted(chatId)
+        onChatDeleted(deleteConfirm)
       }
     } catch (err) {
       console.error('Delete chat error:', err)
+    } finally {
+      setDeleteConfirm(null)
     }
   }
 
@@ -271,6 +275,19 @@ export default function Sidebar({ selectedChatId, onSelectChat, currentUser, onL
           </li>
         ))}
       </ul>
+      
+      {deleteConfirm && (
+        <div className="modal-overlay" onClick={() => setDeleteConfirm(null)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()}>
+            <h3>Удалить чат?</h3>
+            <p>Все сообщения будут удалены</p>
+            <div className="modal-actions">
+              <button className="modal-btn modal-cancel" onClick={() => setDeleteConfirm(null)}>Отмена</button>
+              <button className="modal-btn modal-delete" onClick={confirmDelete}>Удалить</button>
+            </div>
+          </div>
+        </div>
+      )}
     </aside>
   )
 }
