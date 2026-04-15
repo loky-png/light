@@ -1,6 +1,6 @@
 import { io, Socket } from 'socket.io-client'
 
-const SERVER_URL = 'http://135.212.167.68:3000'
+const SERVER_URL = 'http://135.212.167.68:443'
 
 let socket: Socket | null = null
 

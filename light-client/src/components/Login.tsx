@@ -30,18 +30,26 @@ export default function Login({ onLogin }: LoginProps) {
         ? { username, password }
         : { username, password, displayName, publicKey: getPublicKeyBase64() }
 
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), 10000)
       const res = await fetch(`${API_URL}/api/auth/${mode}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
+        signal: controller.signal,
       })
+      clearTimeout(timeout)
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Ошибка')
       localStorage.setItem('light-token', data.token)
       localStorage.setItem('light-user', JSON.stringify(data.user))
       onLogin(data.token, data.user)
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Ошибка подключения')
+      if (e instanceof Error && e.name === 'AbortError') {
+        setError('Сервер не отвечает. Проверьте подключение.')
+      } else {
+        setError(e instanceof Error ? e.message : 'Ошибка подключения')
+      }
     } finally {
       setLoading(false)
     }
