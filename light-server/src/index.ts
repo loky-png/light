@@ -96,6 +96,31 @@ app.get('/api/users/search', (req, res) => {
   return res.json(users)
 })
 
+// REST: удалить чат
+app.delete('/api/chats/:chatId', (req, res) => {
+  try {
+    const token = req.headers.authorization?.split(' ')[1]
+    const user = token ? verifyToken(token) : null
+    if (!user) return res.status(401).json({ error: 'Unauthorized' })
+
+    const { chatId } = req.params
+
+    // Проверяем что пользователь является участником чата
+    const member = db.prepare('SELECT * FROM chat_members WHERE chat_id = ? AND user_id = ?').get(chatId, user.id)
+    if (!member) return res.status(403).json({ error: 'Not a member' })
+
+    // Удаляем чат и все связанные данные
+    db.prepare('DELETE FROM messages WHERE chat_id = ?').run(chatId)
+    db.prepare('DELETE FROM chat_members WHERE chat_id = ?').run(chatId)
+    db.prepare('DELETE FROM chats WHERE id = ?').run(chatId)
+
+    return res.json({ success: true })
+  } catch (err: any) {
+    console.error('Delete chat error:', err)
+    return res.status(500).json({ error: err.message })
+  }
+})
+
 // REST: создать или получить direct чат
 app.post('/api/chats/direct', (req, res) => {
   const token = req.headers.authorization?.split(' ')[1]
@@ -104,6 +129,11 @@ app.post('/api/chats/direct', (req, res) => {
 
   const { userId } = req.body
   if (!userId) return res.status(400).json({ error: 'userId required' })
+  
+  // Запрещаем создание чата с самим собой
+  if (userId === user.id) {
+    return res.status(400).json({ error: 'Cannot create chat with yourself' })
+  }
 
   // Проверяем существует ли уже чат между этими пользователями
   const existingChat = db.prepare(`

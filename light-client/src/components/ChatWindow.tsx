@@ -44,32 +44,82 @@ function formatTime(date: Date): string {
 }
 
 export default function ChatWindow({ chatId, chatName, isOnline }: ChatWindowProps) {
-  const [allMessages, setAllMessages] = useState(MOCK_MESSAGES)
+  const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
+  const [loading, setLoading] = useState(true)
   const bottomRef = useRef<HTMLDivElement>(null)
+  const userId = JSON.parse(localStorage.getItem('light-user') || '{}').id
 
-  const messages = allMessages[chatId] ?? []
+  useEffect(() => {
+    loadMessages()
+    
+    // Подписываемся на новые сообщения
+    const socket = (window as any).socket
+    if (socket) {
+      const handleNewMessage = (msg: any) => {
+        if (msg.chatId === chatId) {
+          setMessages(prev => [...prev, {
+            id: msg.id,
+            chatId: msg.chatId,
+            senderId: msg.senderId,
+            text: msg.text,
+            createdAt: new Date(msg.createdAt),
+            read: msg.read
+          }])
+        }
+      }
+      
+      socket.on('message:new', handleNewMessage)
+      return () => {
+        socket.off('message:new', handleNewMessage)
+      }
+    }
+  }, [chatId])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [chatId, messages.length])
+  }, [messages.length])
 
-  const sendMessage = () => {
+  const loadMessages = async () => {
+    setLoading(true)
+    try {
+      const lightAPI = (window as any).lightAPI
+      const token = localStorage.getItem('light-token')
+      const result = await lightAPI.fetch(`http://155.212.167.68:80/api/chats/${chatId}/messages`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      
+      if (result.ok) {
+        const msgs = JSON.parse(result.text)
+        setMessages(msgs.map((m: any) => ({
+          id: m.id,
+          chatId: m.chat_id,
+          senderId: m.sender_id,
+          text: m.text,
+          createdAt: new Date(m.created_at * 1000),
+          read: m.read === 1
+        })))
+      }
+    } catch (err) {
+      console.error('Load messages error:', err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const sendMessage = async () => {
     const text = input.trim()
     if (!text) return
-    const msg: Message = {
-      id: Date.now().toString(),
-      chatId,
-      senderId: 'me',
-      text,
-      createdAt: new Date(),
-      read: false,
+    
+    try {
+      const socket = (window as any).socket
+      if (socket) {
+        socket.emit('message:send', { chatId, text })
+        setInput('')
+      }
+    } catch (err) {
+      console.error('Send message error:', err)
     }
-    setAllMessages(prev => ({
-      ...prev,
-      [chatId]: [...(prev[chatId] ?? []), msg],
-    }))
-    setInput('')
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -91,22 +141,31 @@ export default function ChatWindow({ chatId, chatName, isOnline }: ChatWindowPro
       </div>
 
       <div className="messages-list">
-        {messages.map((msg, i) => {
-          const isOut = msg.senderId === 'me'
-          const prevMsg = messages[i - 1]
-          const showTail = !prevMsg || prevMsg.senderId !== msg.senderId
-          return (
-            <div key={msg.id} className={`message ${isOut ? 'out' : 'in'} ${showTail ? 'tail' : ''}`}>
-              <div className="message-bubble">
-                <span className="message-text">{msg.text}</span>
-                <span className="message-meta">
-                  {formatTime(msg.createdAt)}
-                  {isOut && <span className="message-check">{msg.read ? '✓✓' : '✓'}</span>}
-                </span>
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: '20px', color: 'var(--text-muted)' }}>Загрузка...</div>
+        ) : messages.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
+            <p>Нет сообщений</p>
+            <span style={{ fontSize: '13px' }}>Напишите первое сообщение</span>
+          </div>
+        ) : (
+          messages.map((msg, i) => {
+            const isOut = msg.senderId === userId
+            const prevMsg = messages[i - 1]
+            const showTail = !prevMsg || prevMsg.senderId !== msg.senderId
+            return (
+              <div key={msg.id} className={`message ${isOut ? 'out' : 'in'} ${showTail ? 'tail' : ''}`}>
+                <div className="message-bubble">
+                  <span className="message-text">{msg.text}</span>
+                  <span className="message-meta">
+                    {formatTime(msg.createdAt)}
+                    {isOut && <span className="message-check">{msg.read ? '✓✓' : '✓'}</span>}
+                  </span>
+                </div>
               </div>
-            </div>
-          )
-        })}
+            )
+          })
+        )}
         <div ref={bottomRef} />
       </div>
 

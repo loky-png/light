@@ -12,6 +12,14 @@ export function connectSocket(token: string): Socket {
     transports: ['websocket'],
   })
 
+  socket.on('message:new', (msg: any) => {
+    console.log('New message:', msg)
+    // Сохраняем socket глобально для доступа из компонентов
+    ;(window as any).socket = socket
+  })
+
+  ;(window as any).socket = socket
+
   return socket
 }
 

@@ -12,7 +12,7 @@ interface SidebarProps {
   onChatCreated: (chat: any) => void
 }
 
-export default function Sidebar({ onSelectChat, currentUser, onLogout, onUpdateProfile, chats, onChatCreated }: SidebarProps) {
+export default function Sidebar({ selectedChatId, onSelectChat, currentUser, onLogout, onUpdateProfile, chats, onChatCreated }: SidebarProps) {
   const [search, setSearch] = useState('')
   const [showSettings, setShowSettings] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
@@ -211,20 +211,25 @@ export default function Sidebar({ onSelectChat, currentUser, onLogout, onUpdateP
           </div>
         )}
         {!isSearching && chats.map(chat => (
-          <li key={chat.id} className={`chat-item ${selectedChatId === chat.id ? 'active' : ''}`} onClick={() => onSelectChat(chat.id)}>
-            <div className="chat-avatar">
-              {chat.name?.split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2) || 'CH'}
-            </div>
-            <div className="chat-info">
-              <div className="chat-top">
-                <span className="chat-name">{chat.name || 'Чат'}</span>
-                {chat.last_message_time && <span className="chat-time">{new Date(chat.last_message_time * 1000).toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' })}</span>}
+          <li key={chat.id} className={`chat-item ${selectedChatId === chat.id ? 'active' : ''}`}>
+            <div onClick={() => onSelectChat(chat.id)} style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1 }}>
+              <div className="chat-avatar">
+                {chat.name?.split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2) || 'CH'}
               </div>
-              <div className="chat-bottom">
-                <span className="chat-preview">{chat.last_message || 'Нет сообщений'}</span>
-                {chat.unread > 0 && <span className="unread-badge">{chat.unread}</span>}
+              <div className="chat-info">
+                <div className="chat-top">
+                  <span className="chat-name">{chat.name || 'Чат'}</span>
+                  {chat.last_message_time && <span className="chat-time">{new Date(chat.last_message_time * 1000).toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' })}</span>}
+                </div>
+                <div className="chat-bottom">
+                  <span className="chat-preview">{chat.last_message || 'Нет сообщений'}</span>
+                  {chat.unread > 0 && <span className="unread-badge">{chat.unread}</span>}
+                </div>
               </div>
             </div>
+            <button className="chat-delete-btn" onClick={(e) => { e.stopPropagation(); handleDeleteChat(chat.id); }} title="Удалить чат">
+              🗑️
+            </button>
           </li>
         ))}
       </ul>
