@@ -114,6 +114,6 @@ io.on('connection', (socket) => {
   })
 })
 
-httpServer.listen(PORT, () => {
-  console.log(`Light server running on port ${PORT}`)
+httpServer.listen(PORT, '0.0.0.0', () => {
+  console.log(`Light server running on 0.0.0.0:${PORT}`)
 })
