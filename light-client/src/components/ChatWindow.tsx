@@ -49,7 +49,10 @@ export default function ChatWindow({ chatId, chatName, isOnline, onMessageSent }
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(true)
   const bottomRef = useRef<HTMLDivElement>(null)
-  const userId = JSON.parse(localStorage.getItem('light-user') || '{}').id
+  const currentUser = JSON.parse(localStorage.getItem('light-user') || '{}')
+  const userId = currentUser.id
+
+  console.log('ChatWindow userId:', userId, 'currentUser:', currentUser)
 
   useEffect(() => {
     loadMessages()
@@ -166,6 +169,7 @@ export default function ChatWindow({ chatId, chatName, isOnline, onMessageSent }
         ) : (
           messages.map((msg, i) => {
             const isOut = msg.senderId === userId
+            console.log('Message:', msg.id, 'senderId:', msg.senderId, 'userId:', userId, 'isOut:', isOut)
             const prevMsg = messages[i - 1]
             const showTail = !prevMsg || prevMsg.senderId !== msg.senderId
             return (

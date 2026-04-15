@@ -66,12 +66,7 @@ export default function App() {
       
       if (result.ok) {
         const chatList = JSON.parse(result.text)
-        // Фильтруем чаты с самим собой
-        const filtered = chatList.filter((chat: any) => {
-          // Проверяем что это не чат с самим собой
-          return chat.name !== user?.displayName
-        })
-        setChats(filtered)
+        setChats(chatList)
       }
     } catch (err) {
       console.error('Load chats error:', err)
@@ -79,12 +74,7 @@ export default function App() {
   }
 
   const handleChatCreated = (chat: any) => {
-    // Проверяем что чата еще нет в списке и это не чат с самим собой
-    if (chat.name === user?.displayName) {
-      console.log('Cannot create chat with yourself')
-      return
-    }
-    
+    // Проверяем что чата еще нет в списке
     const exists = chats.find(c => c.id === chat.id)
     if (!exists) {
       setChats(prev => [chat, ...prev])
