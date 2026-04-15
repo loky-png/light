@@ -27,7 +27,7 @@ router.post('/register', async (req: Request, res: Response) => {
     .run(id, username, displayName, hash)
 
   const token = jwt.sign({ id, username }, JWT_SECRET, { expiresIn: '30d' })
-  return res.json({ token, user: { id, username, displayName } })
+  return res.json({ token, user: { id, username, displayName, avatar: null } })
 })
 
 router.post('/login', async (req: Request, res: Response) => {
@@ -39,7 +39,7 @@ router.post('/login', async (req: Request, res: Response) => {
   if (!valid) return res.status(401).json({ error: 'Неверный логин или пароль' })
 
   const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: '30d' })
-  return res.json({ token, user: { id: user.id, username: user.username, displayName: user.display_name } })
+  return res.json({ token, user: { id: user.id, username: user.username, displayName: user.display_name, avatar: user.avatar } })
 })
 
 export default router

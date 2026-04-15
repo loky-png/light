@@ -11,6 +11,7 @@ interface AuthUser {
   id: string
   username: string
   displayName: string
+  avatar?: string | null
 }
 
 export default function App() {
@@ -38,6 +39,33 @@ export default function App() {
     setUser(null)
   }
 
+  const handleUpdateProfile = async (displayName: string, username: string, avatar: string | null) => {
+    try {
+      const response = await fetch('http://155.212.167.68:80/api/profile', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ displayName, username, avatar })
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        alert(error.error || 'Ошибка обновления профиля')
+        return
+      }
+
+      const data = await response.json()
+      const updatedUser = data.user
+      setUser(updatedUser)
+      localStorage.setItem('light-user', JSON.stringify(updatedUser))
+    } catch (err) {
+      console.error('Profile update error:', err)
+      alert('Ошибка соединения с сервером')
+    }
+  }
+
   if (!token || !user) {
     return (
       <ThemeProvider>
@@ -51,7 +79,13 @@ export default function App() {
       <div className="app">
         <TitleBar onLogout={handleLogout} username={user.displayName} />
         <div className="app-body">
-          <Sidebar selectedChatId={selectedChatId} onSelectChat={setSelectedChatId} />
+          <Sidebar 
+            selectedChatId={selectedChatId} 
+            onSelectChat={setSelectedChatId}
+            currentUser={user}
+            onLogout={handleLogout}
+            onUpdateProfile={handleUpdateProfile}
+          />
           <main className="main">
             {selectedChatId ? (
               <ChatWindow

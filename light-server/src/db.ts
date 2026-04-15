@@ -10,6 +10,7 @@ db.exec(`
     display_name TEXT NOT NULL,
     password_hash TEXT NOT NULL,
     public_key TEXT,
+    avatar TEXT,
     created_at INTEGER DEFAULT (unixepoch())
   );
 

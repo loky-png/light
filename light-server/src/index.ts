@@ -13,8 +13,49 @@ const JWT_SECRET = process.env.JWT_SECRET || 'light-secret-change-in-prod'
 const PORT = process.env.PORT || 3000
 
 app.use(cors())
-app.use(express.json())
+app.use(express.json({ limit: '10mb' })) // Увеличиваем лимит для base64 изображений
 app.use('/api/auth', authRouter)
+
+// Middleware для проверки токена
+function verifyToken(token: string): { id: string; username: string } | null {
+  try {
+    return jwt.verify(token, JWT_SECRET) as { id: string; username: string }
+  } catch {
+    return null
+  }
+}
+
+// REST: обновить профиль пользователя
+app.put('/api/profile', (req, res) => {
+  const token = req.headers.authorization?.split(' ')[1]
+  const user = token ? verifyToken(token) : null
+  if (!user) return res.status(401).json({ error: 'Unauthorized' })
+
+  const { displayName, username, avatar } = req.body
+
+  // Проверка username на уникальность (если меняется)
+  if (username && username !== user.username) {
+    const existing = db.prepare('SELECT id FROM users WHERE username = ? AND id != ?').get(username, user.id)
+    if (existing) {
+      return res.status(409).json({ error: 'Username already taken' })
+    }
+  }
+
+  // Обновляем профиль
+  db.prepare('UPDATE users SET display_name = ?, username = ?, avatar = ? WHERE id = ?')
+    .run(displayName || user.username, username || user.username, avatar || null, user.id)
+
+  const updatedUser = db.prepare('SELECT id, username, display_name, avatar FROM users WHERE id = ?').get(user.id) as any
+
+  return res.json({
+    user: {
+      id: updatedUser.id,
+      username: updatedUser.username,
+      displayName: updatedUser.display_name,
+      avatar: updatedUser.avatar
+    }
+  })
+})
 
 // Middleware для проверки токена
 function verifyToken(token: string): { id: string; username: string } | null {

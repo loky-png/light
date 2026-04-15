@@ -1,32 +1,27 @@
 import { app, BrowserWindow, ipcMain } from 'electron'
 import path from 'path'
-import http from 'http'
+import axios from 'axios'
 
-function httpRequest(url: string, options: RequestInit): Promise<{ok: boolean, status: number, text: string}> {
-  return new Promise((resolve, reject) => {
-    const urlObj = new URL(url)
-    const body = options.body as string
-    const reqOptions = {
-      hostname: urlObj.hostname,
-      port: urlObj.port || 3000,
-      path: urlObj.pathname,
-      method: options.method || 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(body || ''),
-        ...(options.headers as Record<string, string>),
-      },
-    }
-    const req = http.request(reqOptions, (res) => {
-      let data = ''
-      res.on('data', chunk => data += chunk)
-      res.on('end', () => resolve({ ok: (res.statusCode || 500) < 400, status: res.statusCode || 500, text: data }))
+async function httpRequest(url: string, options: RequestInit): Promise<{ok: boolean, status: number, text: string}> {
+  try {
+    console.log('[Main] Axios request:', url, options.method)
+    const response = await axios({
+      url,
+      method: options.method as any || 'GET',
+      data: options.body ? JSON.parse(options.body as string) : undefined,
+      headers: options.headers as any,
+      timeout: 10000,
     })
-    req.on('error', reject)
-    req.setTimeout(10000, () => { req.destroy(); reject(new Error('Timeout')) })
-    if (body) req.write(body)
-    req.end()
-  })
+    console.log('[Main] Response:', response.status, response.data)
+    return { ok: true, status: response.status, text: JSON.stringify(response.data) }
+  } catch (error: any) {
+    if (error.response) {
+      console.log('[Main] Error response:', error.response.status, error.response.data)
+      return { ok: false, status: error.response.status, text: JSON.stringify(error.response.data) }
+    }
+    console.error('[Main] Request failed:', error.message)
+    throw error
+  }
 }
 
 function createWindow() {
