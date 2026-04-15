@@ -21,6 +21,37 @@ export default function App() {
     return u ? JSON.parse(u) : null
   })
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null)
+  const [isValidating, setIsValidating] = useState(true)
+
+  useEffect(() => {
+    const validateToken = async () => {
+      if (!token) {
+        setIsValidating(false)
+        return
+      }
+
+      try {
+        const lightAPI = (window as any).lightAPI
+        const result = await lightAPI.fetch('http://155.212.167.68:80/api/auth/validate', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        })
+
+        if (!result.ok) {
+          // Токен невалидный - выходим
+          localStorage.removeItem('light-token')
+          localStorage.removeItem('light-user')
+          setToken(null)
+          setUser(null)
+        }
+      } catch (err) {
+        console.error('Token validation error:', err)
+      } finally {
+        setIsValidating(false)
+      }
+    }
+
+    validateToken()
+  }, [])
 
   useEffect(() => {
     if (token) connectSocket(token)
@@ -68,6 +99,16 @@ export default function App() {
       alert('Ошибка соединения с сервером')
       throw err
     }
+  }
+
+  if (isValidating) {
+    return (
+      <ThemeProvider>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: 'var(--bg)' }}>
+          <span style={{ color: 'var(--text-primary)' }}>Загрузка...</span>
+        </div>
+      </ThemeProvider>
+    )
   }
 
   if (!token || !user) {

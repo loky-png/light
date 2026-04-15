@@ -25,6 +25,19 @@ function verifyToken(token: string): { id: string; username: string } | null {
   }
 }
 
+// REST: валидация токена
+app.get('/api/auth/validate', (req, res) => {
+  const token = req.headers.authorization?.split(' ')[1]
+  const user = token ? verifyToken(token) : null
+  if (!user) return res.status(401).json({ error: 'Invalid token' })
+  
+  // Проверяем что пользователь существует в БД
+  const dbUser = db.prepare('SELECT id FROM users WHERE id = ?').get(user.id)
+  if (!dbUser) return res.status(401).json({ error: 'User not found' })
+  
+  return res.json({ valid: true })
+})
+
 // REST: обновить профиль пользователя
 app.put('/api/profile', (req, res) => {
   try {

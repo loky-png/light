@@ -10,7 +10,7 @@ interface SidebarProps {
   onUpdateProfile: (displayName: string, username: string, avatar: string | null) => void
 }
 
-export default function Sidebar({ currentUser, onLogout, onUpdateProfile }: SidebarProps) {
+export default function Sidebar({ onSelectChat, currentUser, onLogout, onUpdateProfile }: SidebarProps) {
   const [search, setSearch] = useState('')
   const [showSettings, setShowSettings] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
