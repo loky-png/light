@@ -57,15 +57,6 @@ app.put('/api/profile', (req, res) => {
   })
 })
 
-// Middleware для проверки токена
-function verifyToken(token: string): { id: string; username: string } | null {
-  try {
-    return jwt.verify(token, JWT_SECRET) as { id: string; username: string }
-  } catch {
-    return null
-  }
-}
-
 // REST: получить список чатов пользователя
 app.get('/api/chats', (req, res) => {
   const token = req.headers.authorization?.split(' ')[1]
