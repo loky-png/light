@@ -37,4 +37,12 @@ db.exec(`
   );
 `)
 
+// Добавляем колонку avatar если её нет
+try {
+  db.prepare('ALTER TABLE users ADD COLUMN avatar TEXT').run()
+  console.log('Added avatar column to users table')
+} catch (e) {
+  // Колонка уже существует
+}
+
 export default db

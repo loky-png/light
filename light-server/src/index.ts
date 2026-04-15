@@ -27,34 +27,39 @@ function verifyToken(token: string): { id: string; username: string } | null {
 
 // REST: обновить профиль пользователя
 app.put('/api/profile', (req, res) => {
-  const token = req.headers.authorization?.split(' ')[1]
-  const user = token ? verifyToken(token) : null
-  if (!user) return res.status(401).json({ error: 'Unauthorized' })
+  try {
+    const token = req.headers.authorization?.split(' ')[1]
+    const user = token ? verifyToken(token) : null
+    if (!user) return res.status(401).json({ error: 'Unauthorized' })
 
-  const { displayName, username, avatar } = req.body
+    const { displayName, username, avatar } = req.body
 
-  // Проверка username на уникальность (если меняется)
-  if (username && username !== user.username) {
-    const existing = db.prepare('SELECT id FROM users WHERE username = ? AND id != ?').get(username, user.id)
-    if (existing) {
-      return res.status(409).json({ error: 'Username already taken' })
+    // Проверка username на уникальность (если меняется)
+    if (username && username !== user.username) {
+      const existing = db.prepare('SELECT id FROM users WHERE username = ? AND id != ?').get(username, user.id)
+      if (existing) {
+        return res.status(409).json({ error: 'Username already taken' })
+      }
     }
+
+    // Обновляем профиль
+    db.prepare('UPDATE users SET display_name = ?, username = ?, avatar = ? WHERE id = ?')
+      .run(displayName || user.username, username || user.username, avatar || null, user.id)
+
+    const updatedUser = db.prepare('SELECT id, username, display_name, avatar FROM users WHERE id = ?').get(user.id) as any
+
+    return res.json({
+      user: {
+        id: updatedUser.id,
+        username: updatedUser.username,
+        displayName: updatedUser.display_name,
+        avatar: updatedUser.avatar
+      }
+    })
+  } catch (err: any) {
+    console.error('Profile update error:', err)
+    return res.status(500).json({ error: err.message })
   }
-
-  // Обновляем профиль
-  db.prepare('UPDATE users SET display_name = ?, username = ?, avatar = ? WHERE id = ?')
-    .run(displayName || user.username, username || user.username, avatar || null, user.id)
-
-  const updatedUser = db.prepare('SELECT id, username, display_name, avatar FROM users WHERE id = ?').get(user.id) as any
-
-  return res.json({
-    user: {
-      id: updatedUser.id,
-      username: updatedUser.username,
-      displayName: updatedUser.display_name,
-      avatar: updatedUser.avatar
-    }
-  })
 })
 
 // REST: поиск пользователей
