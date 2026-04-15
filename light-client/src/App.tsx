@@ -43,25 +43,30 @@ export default function App() {
     try {
       const lightAPI = (window as any).lightAPI
       if (!lightAPI?.updateProfile) {
-        alert('Ошибка: API недоступен')
-        return
+        const error = 'Ошибка: API недоступен'
+        alert(error)
+        throw new Error(error)
       }
 
+      console.log('Updating profile:', { displayName, username, hasAvatar: !!avatar })
       const result = await lightAPI.updateProfile(token, { displayName, username, avatar })
+      console.log('Update result:', result)
       
       if (!result.ok) {
         const error = JSON.parse(result.text)
         alert(error.error || 'Ошибка обновления профиля')
-        return
+        throw new Error(error.error || 'Update failed')
       }
 
       const data = JSON.parse(result.text)
       const updatedUser = data.user
       setUser(updatedUser)
       localStorage.setItem('light-user', JSON.stringify(updatedUser))
+      console.log('Profile updated successfully:', updatedUser)
     } catch (err) {
       console.error('Profile update error:', err)
       alert('Ошибка соединения с сервером')
+      throw err
     }
   }
 

@@ -36,9 +36,13 @@ export default function Sidebar({ currentUser, onLogout, onUpdateProfile }: Side
     }
   }
 
-  const handleSaveProfile = () => {
-    onUpdateProfile(editName, editUsername, avatarUrl)
-    setIsEditing(false)
+  const handleSaveProfile = async () => {
+    try {
+      await onUpdateProfile(editName, editUsername, avatarUrl)
+      setIsEditing(false)
+    } catch (err) {
+      console.error('Save profile error:', err)
+    }
   }
 
   const handleCancelEdit = () => {
