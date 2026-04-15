@@ -230,15 +230,18 @@ app.get('/api/chats/:chatId/messages', (req, res) => {
   }
 
   const messages = db.prepare(`
-    SELECT m.*, u.username, u.display_name
+    SELECT m.id, m.chat_id, m.sender_id, m.text, m.created_at, m.read, u.username, u.display_name
     FROM messages m
     JOIN users u ON u.id = m.sender_id
     WHERE m.chat_id = ?
     ORDER BY m.created_at ASC
     LIMIT 100
-  `).all(chatId)
+  `).all(chatId) as any[]
 
   console.log(`Loaded ${messages.length} messages for chat ${chatId}, user ${user.id}`)
+  if (messages.length > 0) {
+    console.log('Sample message:', JSON.stringify(messages[0]))
+  }
   return res.json(messages)
 })
 
