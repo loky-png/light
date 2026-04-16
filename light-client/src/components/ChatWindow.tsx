@@ -105,7 +105,8 @@ export default function ChatWindow({ chatId, chatName, isOnline, userStatus, onM
   }, [chatId, userId])
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    // Мгновенный скролл вниз без анимации
+    bottomRef.current?.scrollIntoView({ behavior: 'auto' })
   }, [messages.length])
 
   const loadMessages = async () => {

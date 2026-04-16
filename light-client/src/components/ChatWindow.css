@@ -48,8 +48,8 @@
 
 .message {
   display: flex;
-  max-width: 68%;
-  animation: messageSlideIn 0.2s ease-out;
+  max-width: 65%;
+  animation: messageSlideIn 0.15s ease-out;
 }
 
 @keyframes messageSlideIn {
@@ -102,42 +102,67 @@
 }
 
 .message-bubble {
-  padding: 8px 12px 6px;
+  padding: 7px 11px 6px;
   border-radius: 18px;
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
   max-width: 100%;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.08);
 }
 
-/* Хвостик у последнего сообщения в группе */
-.message.out.tail .message-bubble {
-  border-bottom-right-radius: 4px;
+/* Исходящие сообщения (справа) */
+/* Первое в группе - верх закруглен, низ прямой */
+.message.out.first-in-group:not(.tail) .message-bubble {
+  border-radius: 18px 18px 4px 18px;
 }
 
-.message.in.tail .message-bubble {
-  border-bottom-left-radius: 4px;
+/* Среднее в группе - верх и низ прямые */
+.message.out:not(.first-in-group):not(.tail) .message-bubble {
+  border-radius: 4px 18px 4px 18px;
 }
 
-/* Убираем верхний угол у сообщений в середине группы */
-.message.out:not(.first-in-group) .message-bubble {
-  border-top-right-radius: 4px;
+/* Последнее в группе - верх прямой, низ с хвостиком */
+.message.out.tail:not(.first-in-group) .message-bubble {
+  border-radius: 4px 18px 4px 4px;
 }
 
-.message.in:not(.first-in-group) .message-bubble {
-  border-top-left-radius: 4px;
+/* Одиночное сообщение - все закруглено + хвостик */
+.message.out.first-in-group.tail .message-bubble {
+  border-radius: 18px 18px 4px 18px;
+}
+
+/* Входящие сообщения (слева) */
+/* Первое в группе - верх закруглен, низ прямой */
+.message.in.first-in-group:not(.tail) .message-bubble {
+  border-radius: 18px 18px 18px 4px;
+}
+
+/* Среднее в группе - верх и низ прямые */
+.message.in:not(.first-in-group):not(.tail) .message-bubble {
+  border-radius: 18px 4px 18px 4px;
+}
+
+/* Последнее в группе - верх прямой, низ с хвостиком */
+.message.in.tail:not(.first-in-group) .message-bubble {
+  border-radius: 18px 4px 18px 4px;
+}
+
+/* Одиночное сообщение - все закруглено + хвостик */
+.message.in.first-in-group.tail .message-bubble {
+  border-radius: 18px 18px 18px 4px;
 }
 
 .message.out .message-bubble {
   background: var(--msg-out-bg);
   color: #fff;
+  border: none;
 }
 
 .message.in .message-bubble {
   background: var(--msg-in-bg);
-  border: 1px solid var(--glass-border);
+  border: none;
   color: var(--text-primary);
 }
 
@@ -209,10 +234,11 @@
 
 .message-text {
   font-size: 15px;
-  line-height: 1.4;
+  line-height: 1.35;
   word-break: break-word;
   flex: 1;
   min-width: 0;
+  letter-spacing: 0.01em;
 }
 
 .message-meta {
