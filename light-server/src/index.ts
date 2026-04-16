@@ -199,12 +199,18 @@ app.post('/api/chats/direct', (req, res) => {
     SELECT c.id, c.name, c.type
     FROM chats c
     WHERE c.type = 'direct'
-    AND c.id IN (
-      SELECT cm1.chat_id 
-      FROM chat_members cm1
-      JOIN chat_members cm2 ON cm1.chat_id = cm2.chat_id
-      WHERE cm1.user_id = ? AND cm2.user_id = ?
+    AND EXISTS (
+      SELECT 1 FROM chat_members cm1 
+      WHERE cm1.chat_id = c.id AND cm1.user_id = ?
     )
+    AND EXISTS (
+      SELECT 1 FROM chat_members cm2 
+      WHERE cm2.chat_id = c.id AND cm2.user_id = ?
+    )
+    AND (
+      SELECT COUNT(*) FROM chat_members cm 
+      WHERE cm.chat_id = c.id
+    ) = 2
     LIMIT 1
   `).get(user.id, userId) as any
 

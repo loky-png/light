@@ -59,10 +59,8 @@ function createWindow() {
 
   win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'))
   
-  // Открываем DevTools только в dev режиме
-  if (process.env.NODE_ENV === 'development') {
-    win.webContents.openDevTools({ mode: 'detach' })
-  }
+  // Всегда открываем DevTools
+  win.webContents.openDevTools({ mode: 'detach' })
 
   // Проверка обновлений при запуске
   setTimeout(() => {
