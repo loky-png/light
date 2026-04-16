@@ -165,7 +165,18 @@ app.post('/api/chats/direct', (req, res) => {
 
   if (existingChat) {
     console.log('Chat already exists:', existingChat.id)
-    return res.json({ chat: existingChat })
+    // Возвращаем существующий чат с полными данными
+    return res.json({ 
+      chat: {
+        id: existingChat.id,
+        type: existingChat.type,
+        name: targetUser.display_name,
+        avatar: targetUser.avatar,
+        last_message: null,
+        last_message_time: null,
+        unread: 0
+      }
+    })
   }
 
   // Создаем новый чат
@@ -175,7 +186,17 @@ app.post('/api/chats/direct', (req, res) => {
   db.prepare('INSERT INTO chat_members (chat_id, user_id) VALUES (?, ?), (?, ?)').run(chatId, user.id, chatId, userId)
 
   console.log('Chat created:', chatId)
-  return res.json({ chat: { id: chatId, type: 'direct', name: targetUser.display_name } })
+  return res.json({ 
+    chat: { 
+      id: chatId, 
+      type: 'direct', 
+      name: targetUser.display_name,
+      avatar: targetUser.avatar,
+      last_message: null,
+      last_message_time: null,
+      unread: 0
+    } 
+  })
 })
 
 // REST: получить список чатов пользователя
@@ -273,12 +294,18 @@ io.on('connection', (socket) => {
   const user = socket.data.user
   onlineUsers.set(user.id, socket.id)
   io.emit('user:online', { userId: user.id })
+  console.log('User connected:', user.username, socket.id)
 
   // Присоединяемся ко всем чатам пользователя
   const chats = db.prepare(`
     SELECT chat_id FROM chat_members WHERE user_id = ?
   `).all(user.id) as { chat_id: string }[]
   chats.forEach(c => socket.join(c.chat_id))
+
+  // Пинг-понг для проверки соединения
+  socket.on('ping', (timestamp: number) => {
+    socket.emit('pong', timestamp)
+  })
 
   // Отправка сообщения
   socket.on('message:send', ({ chatId, text }: { chatId: string; text: string }) => {
@@ -315,6 +342,7 @@ io.on('connection', (socket) => {
   socket.on('disconnect', () => {
     onlineUsers.delete(user.id)
     io.emit('user:offline', { userId: user.id })
+    console.log('User disconnected:', user.username)
   })
 })
 

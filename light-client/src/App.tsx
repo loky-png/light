@@ -100,7 +100,11 @@ export default function App() {
   }
 
   useEffect(() => {
-    if (token) connectSocket(token)
+    if (token) {
+      connectSocket(token)
+      // Загружаем чаты сразу после подключения socket
+      loadChats()
+    }
   }, [token])
 
   const handleLogin = (t: string, u: AuthUser) => {

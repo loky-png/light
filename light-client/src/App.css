@@ -28,13 +28,21 @@
   justify-content: center;
   gap: 16px;
   color: var(--text-secondary);
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
 }
 
 .empty-icon {
   font-size: 64px;
   opacity: 0.3;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .empty-state p {
   font-size: 16px;
+  user-select: none;
+  -webkit-user-select: none;
 }

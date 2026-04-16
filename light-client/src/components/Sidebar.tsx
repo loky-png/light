@@ -121,6 +121,7 @@ export default function Sidebar({ selectedChatId, onSelectChat, currentUser, onL
       
       if (result.ok) {
         const data = JSON.parse(result.text)
+        console.log('Chat created/found:', data.chat)
         setSearch('')
         setSearchResults([])
         setIsSearching(false)
@@ -128,19 +129,22 @@ export default function Sidebar({ selectedChatId, onSelectChat, currentUser, onL
         // Проверяем есть ли уже такой чат в списке
         const existingChat = chats.find(c => c.id === data.chat.id)
         if (!existingChat) {
+          // Добавляем новый чат с правильными данными
           onChatCreated(data.chat)
-        } else {
-          // Просто открываем существующий чат
-          onSelectChat(data.chat.id)
         }
+        // Открываем чат
+        onSelectChat(data.chat.id)
       } else {
         const error = JSON.parse(result.text)
         if (error.error === 'Cannot create chat with yourself') {
           alert('Нельзя создать чат с самим собой')
+        } else {
+          alert(error.error || 'Ошибка создания чата')
         }
       }
     } catch (err) {
       console.error('Create chat error:', err)
+      alert('Ошибка соединения с сервером')
     }
   }
 

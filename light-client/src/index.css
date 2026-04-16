@@ -39,23 +39,23 @@ body {
 
 /* Light theme */
 :root[data-theme="light"] {
-  --bg-wallpaper: linear-gradient(135deg, #e0eafc, #cfdef3, #e8f4fd);
-  --glass-bg: rgba(255, 255, 255, 0.55);
-  --glass-bg-strong: rgba(255, 255, 255, 0.75);
-  --glass-border: rgba(255, 255, 255, 0.8);
-  --glass-hover: rgba(255, 255, 255, 0.7);
-  --glass-active: rgba(36, 129, 204, 0.15);
-  --msg-out-bg: rgba(36, 129, 204, 0.85);
-  --msg-in-bg: rgba(255, 255, 255, 0.75);
-  --text-primary: rgba(0, 0, 0, 0.88);
-  --text-secondary: rgba(0, 0, 0, 0.45);
-  --text-muted: rgba(0, 0, 0, 0.25);
+  --bg-wallpaper: linear-gradient(135deg, #f5f7fa, #e8eef5, #f0f4f8);
+  --glass-bg: rgba(255, 255, 255, 0.7);
+  --glass-bg-strong: rgba(255, 255, 255, 0.85);
+  --glass-border: rgba(0, 0, 0, 0.08);
+  --glass-hover: rgba(0, 0, 0, 0.04);
+  --glass-active: rgba(36, 129, 204, 0.12);
+  --msg-out-bg: rgba(36, 129, 204, 0.9);
+  --msg-in-bg: rgba(255, 255, 255, 0.85);
+  --text-primary: rgba(0, 0, 0, 0.9);
+  --text-secondary: rgba(0, 0, 0, 0.6);
+  --text-muted: rgba(0, 0, 0, 0.4);
   --accent: #2481cc;
-  --accent-glow: rgba(36, 129, 204, 0.3);
+  --accent-glow: rgba(36, 129, 204, 0.25);
   --online: #34c759;
-  --shadow: rgba(0, 0, 0, 0.12);
-  --input-bg: rgba(255, 255, 255, 0.6);
-  --scrollbar: rgba(0, 0, 0, 0.1);
+  --shadow: rgba(0, 0, 0, 0.08);
+  --input-bg: rgba(255, 255, 255, 0.75);
+  --scrollbar: rgba(0, 0, 0, 0.15);
 }
 
 /* Scrollbar */

@@ -24,6 +24,10 @@
   color: var(--accent);
   letter-spacing: 2px;
   text-shadow: 0 0 20px var(--accent-glow);
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
 }
 
 .theme-toggle {
