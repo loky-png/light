@@ -289,14 +289,16 @@ app.get('/api/chats/:chatId/messages', (req, res) => {
     return res.status(403).json({ error: 'Not a member' })
   }
 
+  // Получаем сообщения, исключая скрытые для текущего пользователя
   const messages = db.prepare(`
     SELECT m.id, m.chat_id, m.sender_id, m.text, m.created_at, m.read, m.reply_to, u.username, u.display_name
     FROM messages m
     JOIN users u ON u.id = m.sender_id
-    WHERE m.chat_id = ?
+    LEFT JOIN hidden_messages hm ON hm.message_id = m.id AND hm.user_id = ?
+    WHERE m.chat_id = ? AND hm.message_id IS NULL
     ORDER BY m.created_at ASC
     LIMIT 100
-  `).all(chatId) as any[]
+  `).all(user.id, chatId) as any[]
 
   // Парсим reply_to из JSON
   const messagesWithReply = messages.map(msg => {
@@ -464,16 +466,17 @@ io.on('connection', (socket) => {
     }
     
     if (forEveryone) {
-      // Удаляем сообщение полностью из базы данных
+      // Удаляем сообщение полностью из базы данных для всех
       db.prepare('DELETE FROM messages WHERE id = ?').run(messageId)
+      db.prepare('DELETE FROM hidden_messages WHERE message_id = ?').run(messageId)
       console.log('Message deleted for everyone:', messageId)
       
       // Уведомляем всех участников чата
       io.to(chatId).emit('message:deleted', { messageId, forEveryone: true })
     } else {
-      // Помечаем сообщение как удаленное (заменяем текст)
-      db.prepare('UPDATE messages SET text = ? WHERE id = ?').run('Сообщение удалено', messageId)
-      console.log('Message deleted for self:', messageId)
+      // Скрываем сообщение только для текущего пользователя
+      db.prepare('INSERT OR IGNORE INTO hidden_messages (message_id, user_id) VALUES (?, ?)').run(messageId, user.id)
+      console.log('Message hidden for user:', messageId, user.id)
       
       // Уведомляем только текущего пользователя
       socket.emit('message:deleted', { messageId, forEveryone: false })

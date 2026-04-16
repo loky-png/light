@@ -75,15 +75,8 @@ export default function ChatWindow({ chatId, chatName, isOnline, userStatus, onM
       
       const handleMessageDeleted = ({ messageId, forEveryone }: { messageId: string; forEveryone: boolean }) => {
         console.log('Message deleted:', { messageId, forEveryone })
-        if (forEveryone) {
-          // Удаляем сообщение из списка
-          setMessages(prev => prev.filter(msg => msg.id !== messageId))
-        } else {
-          // Заменяем текст на "Сообщение удалено"
-          setMessages(prev => prev.map(msg => 
-            msg.id === messageId ? { ...msg, text: 'Сообщение удалено', deleted: true } as any : msg
-          ))
-        }
+        // В обоих случаях просто удаляем сообщение из списка
+        setMessages(prev => prev.filter(msg => msg.id !== messageId))
       }
       
       socket.on('message:new', handleNewMessage)

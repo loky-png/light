@@ -36,6 +36,12 @@ db.exec(`
     read INTEGER DEFAULT 0,
     reply_to TEXT
   );
+
+  CREATE TABLE IF NOT EXISTS hidden_messages (
+    message_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    PRIMARY KEY (message_id, user_id)
+  );
 `)
 
 // Добавляем колонку avatar если её нет
