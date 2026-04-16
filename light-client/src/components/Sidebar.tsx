@@ -11,9 +11,10 @@ interface SidebarProps {
   chats: any[]
   onChatCreated: (chat: any) => void
   onChatDeleted: (chatId: string) => void
+  token: string
 }
 
-export default function Sidebar({ selectedChatId, onSelectChat, currentUser, onLogout, onUpdateProfile, chats, onChatCreated, onChatDeleted }: SidebarProps) {
+export default function Sidebar({ selectedChatId, onSelectChat, currentUser, onLogout, onUpdateProfile, chats, onChatCreated, onChatDeleted, token }: SidebarProps) {
   const [search, setSearch] = useState('')
   const [showSettings, setShowSettings] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
@@ -65,7 +66,6 @@ export default function Sidebar({ selectedChatId, onSelectChat, currentUser, onL
     
     try {
       const lightAPI = (window as any).lightAPI
-      const token = localStorage.getItem('light-token')
       const result = await lightAPI.fetch(`http://155.212.167.68:80/api/chats/${deleteConfirm}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
@@ -92,7 +92,6 @@ export default function Sidebar({ selectedChatId, onSelectChat, currentUser, onL
     setIsSearching(true)
     try {
       const lightAPI = (window as any).lightAPI
-      const token = localStorage.getItem('light-token')
       const result = await lightAPI.fetch(`http://155.212.167.68:80/api/users/search?q=${encodeURIComponent(query)}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       })
@@ -111,7 +110,6 @@ export default function Sidebar({ selectedChatId, onSelectChat, currentUser, onL
   const handleSelectUser = async (userId: string) => {
     try {
       const lightAPI = (window as any).lightAPI
-      const token = localStorage.getItem('light-token')
       const result = await lightAPI.fetch('http://155.212.167.68:80/api/chats/direct', {
         method: 'POST',
         headers: {

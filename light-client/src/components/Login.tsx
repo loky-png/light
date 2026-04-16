@@ -49,8 +49,9 @@ export default function Login({ onLogin }: LoginProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       })
-      localStorage.setItem('light-token', data.token)
-      localStorage.setItem('light-user', JSON.stringify(data.user))
+      
+      // Сохраняем ТОЛЬКО токен, данные пользователя передаем в App
+      console.log('Auth response:', data)
       onLogin(data.token, data.user)
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Ошибка подключения')

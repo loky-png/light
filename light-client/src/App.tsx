@@ -23,11 +23,10 @@ export default function App() {
 
   useEffect(() => {
     const validateToken = async () => {
-      // Читаем данные из localStorage при загрузке
+      // Читаем ТОЛЬКО токен из localStorage
       const storedToken = localStorage.getItem('light-token')
-      const storedUser = localStorage.getItem('light-user')
       
-      if (!storedToken || !storedUser) {
+      if (!storedToken) {
         setIsValidating(false)
         return
       }
@@ -40,19 +39,21 @@ export default function App() {
 
         if (!result.ok) {
           // Токен невалидный - выходим
-          localStorage.clear()
+          localStorage.removeItem('light-token')
           setToken(null)
           setUser(null)
         } else {
-          // Токен валидный - устанавливаем состояние
+          // Токен валидный - получаем данные пользователя с СЕРВЕРА
+          const data = JSON.parse(result.text)
+          console.log('User data from server:', data.user)
           setToken(storedToken)
-          setUser(JSON.parse(storedUser))
+          setUser(data.user)
           // Загружаем список чатов
           loadChats(storedToken)
         }
       } catch (err) {
         console.error('Token validation error:', err)
-        localStorage.clear()
+        localStorage.removeItem('light-token')
         setToken(null)
         setUser(null)
       } finally {
@@ -103,13 +104,10 @@ export default function App() {
   }, [token])
 
   const handleLogin = (t: string, u: AuthUser) => {
-    // Полностью очищаем старые данные
-    localStorage.clear()
-    
-    // Сохраняем новые данные
+    // Сохраняем ТОЛЬКО токен в localStorage
     localStorage.setItem('light-token', t)
-    localStorage.setItem('light-user', JSON.stringify(u))
     
+    console.log('Login successful, user from server:', u)
     setToken(t)
     setUser(u)
     setSelectedChatId(null)
@@ -124,8 +122,8 @@ export default function App() {
   }
 
   const handleLogout = () => {
-    // Полностью очищаем localStorage
-    localStorage.clear()
+    // Очищаем ТОЛЬКО токен
+    localStorage.removeItem('light-token')
     
     // Отключаем socket
     const socket = (window as any).socket
@@ -161,8 +159,9 @@ export default function App() {
 
       const data = JSON.parse(result.text)
       const updatedUser = data.user
+      
+      // Обновляем состояние данными с СЕРВЕРА (не сохраняем в localStorage)
       setUser(updatedUser)
-      localStorage.setItem('light-user', JSON.stringify(updatedUser))
       console.log('Profile updated successfully:', updatedUser)
     } catch (err) {
       console.error('Profile update error:', err)
@@ -203,6 +202,7 @@ export default function App() {
             chats={chats}
             onChatCreated={handleChatCreated}
             onChatDeleted={handleChatDeleted}
+            token={token}
           />
           <main className="main">
             {selectedChatId ? (
@@ -212,6 +212,7 @@ export default function App() {
                 isOnline={false}
                 onMessageSent={loadChats}
                 currentUserId={user.id}
+                token={token}
               />
             ) : (
               <div className="empty-state">

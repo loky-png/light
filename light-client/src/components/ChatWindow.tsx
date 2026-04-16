@@ -8,13 +8,14 @@ interface ChatWindowProps {
   isOnline: boolean
   onMessageSent?: () => void
   currentUserId: string
+  token: string
 }
 
 function formatTime(date: Date): string {
   return date.toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' })
 }
 
-export default function ChatWindow({ chatId, chatName, isOnline, onMessageSent, currentUserId }: ChatWindowProps) {
+export default function ChatWindow({ chatId, chatName, isOnline, onMessageSent, currentUserId, token }: ChatWindowProps) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(true)
@@ -52,7 +53,6 @@ export default function ChatWindow({ chatId, chatName, isOnline, onMessageSent, 
     setLoading(true)
     try {
       const lightAPI = (window as any).lightAPI
-      const token = localStorage.getItem('light-token')
       const result = await lightAPI.fetch(`http://155.212.167.68:80/api/chats/${chatId}/messages`, {
         headers: { 'Authorization': `Bearer ${token}` }
       })
