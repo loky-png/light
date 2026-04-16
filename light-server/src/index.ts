@@ -140,18 +140,27 @@ app.delete('/api/chats/:chatId', (req, res) => {
     const member = db.prepare('SELECT * FROM chat_members WHERE chat_id = ? AND user_id = ?').get(chatId, user.id)
     if (!member) return res.status(403).json({ error: 'Not a member' })
 
-    // Получаем все ID сообщений чата для удаления hidden_messages
+    // Получаем все ID сообщений чата для удаления
     const messageIds = db.prepare('SELECT id FROM messages WHERE chat_id = ?').all(chatId) as { id: string }[]
     
-    // Удаляем чат и все связанные данные
+    // Удаляем только сообщения и связи, но НЕ сам чат
+    // Это позволит переиспользовать чат при повторном обращении
     db.prepare('DELETE FROM messages WHERE chat_id = ?').run(chatId)
-    db.prepare('DELETE FROM chat_members WHERE chat_id = ?').run(chatId)
-    db.prepare('DELETE FROM chats WHERE id = ?').run(chatId)
     
     // Удаляем скрытые сообщения
     if (messageIds.length > 0) {
       const placeholders = messageIds.map(() => '?').join(',')
       db.prepare(`DELETE FROM hidden_messages WHERE message_id IN (${placeholders})`).run(...messageIds.map(m => m.id))
+    }
+    
+    // Удаляем чат из списка только для текущего пользователя
+    // Для этого удаляем его членство
+    db.prepare('DELETE FROM chat_members WHERE chat_id = ? AND user_id = ?').run(chatId, user.id)
+    
+    // Если больше нет участников, удаляем сам чат
+    const remainingMembers = db.prepare('SELECT COUNT(*) as count FROM chat_members WHERE chat_id = ?').get(chatId) as { count: number }
+    if (remainingMembers.count === 0) {
+      db.prepare('DELETE FROM chats WHERE id = ?').run(chatId)
     }
 
     return res.json({ success: true })
@@ -185,18 +194,27 @@ app.post('/api/chats/direct', (req, res) => {
     return res.status(404).json({ error: 'User not found' })
   }
 
-  // Проверяем существует ли уже чат между этими пользователями
+  // Проверяем существует ли уже чат между этими пользователями (даже если текущий пользователь не участник)
   const existingChat = db.prepare(`
     SELECT c.id, c.name, c.type
     FROM chats c
-    JOIN chat_members cm1 ON cm1.chat_id = c.id AND cm1.user_id = ?
-    JOIN chat_members cm2 ON cm2.chat_id = c.id AND cm2.user_id = ?
+    JOIN chat_members cm ON cm.chat_id = c.id AND cm.user_id = ?
     WHERE c.type = 'direct'
     LIMIT 1
-  `).get(user.id, userId) as any
+  `).get(userId) as any
 
   if (existingChat) {
-    console.log('Chat already exists:', existingChat.id)
+    console.log('Chat exists, checking membership:', existingChat.id)
+    
+    // Проверяем является ли текущий пользователь участником
+    const isMember = db.prepare('SELECT * FROM chat_members WHERE chat_id = ? AND user_id = ?').get(existingChat.id, user.id)
+    
+    if (!isMember) {
+      // Добавляем пользователя обратно в чат
+      console.log('Re-adding user to chat:', existingChat.id)
+      db.prepare('INSERT INTO chat_members (chat_id, user_id) VALUES (?, ?)').run(existingChat.id, user.id)
+    }
+    
     // Возвращаем существующий чат с полными данными
     return res.json({ 
       chat: {
@@ -206,7 +224,8 @@ app.post('/api/chats/direct', (req, res) => {
         avatar: targetUser.avatar,
         last_message: null,
         last_message_time: null,
-        unread: 0
+        unread: 0,
+        otherUserId: userId
       }
     })
   }
@@ -226,7 +245,8 @@ app.post('/api/chats/direct', (req, res) => {
       avatar: targetUser.avatar,
       last_message: null,
       last_message_time: null,
-      unread: 0
+      unread: 0,
+      otherUserId: userId
     } 
   })
 })

@@ -6,18 +6,28 @@
   background: var(--bg-wallpaper);
   overflow: hidden;
   will-change: transform;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
 }
 
 .app-body {
   display: flex;
   flex: 1;
   overflow: hidden;
+  /* Предотвращаем черный экран при ресайзе */
+  will-change: transform;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
 }
 
 .main {
   flex: 1;
   display: flex;
   overflow: hidden;
+  background: var(--bg);
+  will-change: transform;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
 }
 
 .empty-state {
