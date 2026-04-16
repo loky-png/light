@@ -18,12 +18,38 @@
   -webkit-app-region: drag;
 }
 
+.titlebar-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 .titlebar-title {
   font-size: 13px;
   font-weight: 600;
   color: var(--text-secondary);
   letter-spacing: 1px;
   pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.connection-status {
+  font-size: 11px;
+  color: #ff4757;
+  background: rgba(255, 71, 87, 0.1);
+  padding: 3px 8px;
+  border-radius: 8px;
+  font-weight: 600;
+  animation: pulse 2s ease-in-out infinite;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
 }
 
 .titlebar-controls {

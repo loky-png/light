@@ -63,6 +63,26 @@
   }
 }
 
+@keyframes messageSlideOut {
+  from {
+    opacity: 1;
+    transform: scale(1);
+    max-height: 200px;
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.95);
+    max-height: 0;
+    margin: 0;
+    padding: 0;
+  }
+}
+
+.message.deleting {
+  animation: messageSlideOut 0.2s ease-out forwards;
+  pointer-events: none;
+}
+
 .message.out {
   align-self: flex-end;
 }
@@ -72,8 +92,13 @@
 }
 
 /* Отступ между группами сообщений */
-.message.tail {
-  margin-top: 8px;
+.message.first-in-group {
+  margin-top: 12px;
+}
+
+/* Маленький отступ между сообщениями в одной группе */
+.message:not(.first-in-group) {
+  margin-top: 2px;
 }
 
 .message-bubble {
@@ -87,13 +112,22 @@
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
-/* Хвостик у первого сообщения в группе */
+/* Хвостик у последнего сообщения в группе */
 .message.out.tail .message-bubble {
   border-bottom-right-radius: 4px;
 }
 
 .message.in.tail .message-bubble {
   border-bottom-left-radius: 4px;
+}
+
+/* Убираем верхний угол у сообщений в середине группы */
+.message.out:not(.first-in-group) .message-bubble {
+  border-top-right-radius: 4px;
+}
+
+.message.in:not(.first-in-group) .message-bubble {
+  border-top-left-radius: 4px;
 }
 
 .message.out .message-bubble {

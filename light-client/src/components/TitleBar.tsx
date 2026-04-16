@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react'
 import './TitleBar.css'
 
 // Electron IPC через preload
@@ -16,6 +17,21 @@ interface TitleBarProps {
 }
 
 export default function TitleBar({ username }: TitleBarProps) {
+  const [isConnected, setIsConnected] = useState(true)
+  
+  useEffect(() => {
+    const handleConnected = () => setIsConnected(true)
+    const handleDisconnected = () => setIsConnected(false)
+    
+    window.addEventListener('socket:connected', handleConnected)
+    window.addEventListener('socket:disconnected', handleDisconnected)
+    
+    return () => {
+      window.removeEventListener('socket:connected', handleConnected)
+      window.removeEventListener('socket:disconnected', handleDisconnected)
+    }
+  }, [])
+  
   const minimize = () => window.lightAPI?.minimize()
   const maximize = () => window.lightAPI?.maximize()
   const close = () => window.lightAPI?.close()
@@ -23,7 +39,10 @@ export default function TitleBar({ username }: TitleBarProps) {
   return (
     <div className="titlebar">
       <div className="titlebar-drag" />
-      <span className="titlebar-title">Light {username ? `· ${username}` : ''}</span>
+      <div className="titlebar-left">
+        <span className="titlebar-title">Light {username ? `· ${username}` : ''}</span>
+        {!isConnected && <span className="connection-status">Нет соединения</span>}
+      </div>
       <div className="titlebar-controls">
         <button className="tb-btn tb-close" onClick={close} aria-label="Закрыть">
           <span />

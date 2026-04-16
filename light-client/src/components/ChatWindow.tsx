@@ -75,8 +75,18 @@ export default function ChatWindow({ chatId, chatName, isOnline, userStatus, onM
       
       const handleMessageDeleted = ({ messageId, forEveryone }: { messageId: string; forEveryone: boolean }) => {
         console.log('Message deleted:', { messageId, forEveryone })
-        // В обоих случаях просто удаляем сообщение из списка
-        setMessages(prev => prev.filter(msg => msg.id !== messageId))
+        // Добавляем класс для анимации удаления
+        const messageElement = messagesRef.current[messageId]
+        if (messageElement) {
+          messageElement.classList.add('deleting')
+          // Удаляем из списка после анимации
+          setTimeout(() => {
+            setMessages(prev => prev.filter(msg => msg.id !== messageId))
+          }, 200)
+        } else {
+          // Если элемента нет, удаляем сразу
+          setMessages(prev => prev.filter(msg => msg.id !== messageId))
+        }
       }
       
       socket.on('message:new', handleNewMessage)
@@ -176,6 +186,7 @@ export default function ChatWindow({ chatId, chatName, isOnline, userStatus, onM
       }
     } catch (err) {
       console.error('Send message error:', err)
+      alert('Ошибка отправки сообщения')
     }
   }
 
@@ -257,13 +268,15 @@ export default function ChatWindow({ chatId, chatName, isOnline, userStatus, onM
           messages.map((msg, i) => {
             const isOut = msg.senderId === userId
             console.log('Message:', msg.id, 'senderId:', msg.senderId, 'userId:', userId, 'isOut:', isOut)
+            const nextMsg = messages[i + 1]
+            const showTail = !nextMsg || nextMsg.senderId !== msg.senderId
             const prevMsg = messages[i - 1]
-            const showTail = !prevMsg || prevMsg.senderId !== msg.senderId
+            const isFirstInGroup = !prevMsg || prevMsg.senderId !== msg.senderId
             return (
               <div 
                 key={msg.id} 
                 ref={el => { if (el) messagesRef.current[msg.id] = el }}
-                className={`message ${isOut ? 'out' : 'in'} ${showTail ? 'tail' : ''}`}
+                className={`message ${isOut ? 'out' : 'in'} ${showTail ? 'tail' : ''} ${isFirstInGroup ? 'first-in-group' : ''}`}
                 onContextMenu={(e) => handleMessageContextMenu(e, msg)}
               >
                 <div className="message-bubble">
@@ -318,6 +331,15 @@ export default function ChatWindow({ chatId, chatName, isOnline, userStatus, onM
               <button className="context-menu-item delete" onClick={() => handleDeleteMessage(true)}>
                 <span className="context-menu-icon">🗑️</span>
                 Удалить у всех
+              </button>
+            </>
+          )}
+          {messages.find(m => m.id === contextMenu.messageId)?.senderId !== userId && (
+            <>
+              <div className="context-menu-divider" />
+              <button className="context-menu-item delete" onClick={() => handleDeleteMessage(false)}>
+                <span className="context-menu-icon">🗑️</span>
+                Удалить сообщение
               </button>
             </>
           )}
