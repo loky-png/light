@@ -42,6 +42,13 @@ db.exec(`
     user_id TEXT NOT NULL,
     PRIMARY KEY (message_id, user_id)
   );
+
+  -- Индексы для ускорения запросов
+  CREATE INDEX IF NOT EXISTS idx_messages_chat_id ON messages(chat_id);
+  CREATE INDEX IF NOT EXISTS idx_messages_sender_id ON messages(sender_id);
+  CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at);
+  CREATE INDEX IF NOT EXISTS idx_chat_members_user_id ON chat_members(user_id);
+  CREATE INDEX IF NOT EXISTS idx_hidden_messages_user_id ON hidden_messages(user_id);
 `)
 
 // Добавляем колонку avatar если её нет

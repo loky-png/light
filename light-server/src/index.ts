@@ -55,6 +55,29 @@ app.put('/api/profile', (req, res) => {
 
     const { displayName, username, avatar } = req.body
 
+    // Валидация displayName
+    if (!displayName || !displayName.trim()) {
+      return res.status(400).json({ error: 'Display name is required' })
+    }
+    
+    if (displayName.trim().length > 100) {
+      return res.status(400).json({ error: 'Display name too long' })
+    }
+
+    // Валидация username
+    if (username && username.length < 4) {
+      return res.status(400).json({ error: 'Username must be at least 4 characters' })
+    }
+    
+    if (username && !/^[a-zA-Z0-9_]+$/.test(username)) {
+      return res.status(400).json({ error: 'Username can only contain letters, numbers and underscore' })
+    }
+
+    // Валидация аватара (проверяем размер base64)
+    if (avatar && avatar.length > 5 * 1024 * 1024) {
+      return res.status(400).json({ error: 'Avatar too large (max 5MB)' })
+    }
+
     // Проверка username на уникальность (если меняется)
     if (username && username !== user.username) {
       const existing = db.prepare('SELECT id FROM users WHERE username = ? AND id != ?').get(username, user.id)
@@ -65,7 +88,7 @@ app.put('/api/profile', (req, res) => {
 
     // Обновляем профиль
     db.prepare('UPDATE users SET display_name = ?, username = ?, avatar = ? WHERE id = ?')
-      .run(displayName || user.username, username || user.username, avatar || null, user.id)
+      .run(displayName.trim(), username || user.username, avatar || null, user.id)
 
     const updatedUser = db.prepare('SELECT id, username, display_name, avatar FROM users WHERE id = ?').get(user.id) as any
 
@@ -117,10 +140,19 @@ app.delete('/api/chats/:chatId', (req, res) => {
     const member = db.prepare('SELECT * FROM chat_members WHERE chat_id = ? AND user_id = ?').get(chatId, user.id)
     if (!member) return res.status(403).json({ error: 'Not a member' })
 
+    // Получаем все ID сообщений чата для удаления hidden_messages
+    const messageIds = db.prepare('SELECT id FROM messages WHERE chat_id = ?').all(chatId) as { id: string }[]
+    
     // Удаляем чат и все связанные данные
     db.prepare('DELETE FROM messages WHERE chat_id = ?').run(chatId)
     db.prepare('DELETE FROM chat_members WHERE chat_id = ?').run(chatId)
     db.prepare('DELETE FROM chats WHERE id = ?').run(chatId)
+    
+    // Удаляем скрытые сообщения
+    if (messageIds.length > 0) {
+      const placeholders = messageIds.map(() => '?').join(',')
+      db.prepare(`DELETE FROM hidden_messages WHERE message_id IN (${placeholders})`).run(...messageIds.map(m => m.id))
+    }
 
     return res.json({ success: true })
   } catch (err: any) {
@@ -337,10 +369,23 @@ const onlineUsers = new Map<string, { socketId: string; lastSeen: number }>()
 
 // Функция для удаления старых сообщений (старше 7 дней)
 function cleanupOldMessages() {
-  const sevenDaysAgo = Math.floor(Date.now() / 1000) - (7 * 24 * 60 * 60)
-  const result = db.prepare('DELETE FROM messages WHERE created_at < ?').run(sevenDaysAgo)
-  if (result.changes > 0) {
-    console.log(`Deleted ${result.changes} messages older than 7 days`)
+  try {
+    const sevenDaysAgo = Math.floor(Date.now() / 1000) - (7 * 24 * 60 * 60)
+    
+    // Получаем ID старых сообщений
+    const oldMessages = db.prepare('SELECT id FROM messages WHERE created_at < ?').all(sevenDaysAgo) as { id: string }[]
+    
+    if (oldMessages.length > 0) {
+      // Удаляем скрытые сообщения
+      const placeholders = oldMessages.map(() => '?').join(',')
+      db.prepare(`DELETE FROM hidden_messages WHERE message_id IN (${placeholders})`).run(...oldMessages.map(m => m.id))
+      
+      // Удаляем сами сообщения
+      const result = db.prepare('DELETE FROM messages WHERE created_at < ?').run(sevenDaysAgo)
+      console.log(`Deleted ${result.changes} messages older than 7 days`)
+    }
+  } catch (err) {
+    console.error('Cleanup error:', err)
   }
 }
 
@@ -398,88 +443,102 @@ io.on('connection', (socket) => {
 
   // Отправка сообщения
   socket.on('message:send', ({ chatId, text, replyTo }: { chatId: string; text: string; replyTo?: any }) => {
-    if (!text?.trim()) return
-    
-    // Проверяем лимит символов
-    if (text.trim().length > 1000) {
-      console.error('Message too long:', text.length)
-      return
-    }
-    
-    // Проверяем что пользователь является участником чата
-    const member = db.prepare('SELECT * FROM chat_members WHERE chat_id = ? AND user_id = ?').get(chatId, user.id)
-    if (!member) {
-      console.error('User not a member of chat:', user.id, chatId)
-      return
-    }
-    
-    const id = randomUUID()
-    const now = Math.floor(Date.now() / 1000)
-    
-    // Сохраняем информацию об ответе если есть
-    const replyToData = replyTo ? JSON.stringify(replyTo) : null
-    
-    console.log('Saving message:', { id, chatId, senderId: user.id, text: text.trim(), replyTo: replyToData })
-    db.prepare('INSERT INTO messages (id, chat_id, sender_id, text, created_at, reply_to) VALUES (?, ?, ?, ?, ?, ?)')
-      .run(id, chatId, user.id, text.trim(), now, replyToData)
-
-    // Получаем имя отправителя для ответа
-    const sender = db.prepare('SELECT display_name FROM users WHERE id = ?').get(user.id) as any
-    
-    const msg: any = {
-      id, 
-      chatId, 
-      text: text.trim(),
-      senderId: user.id,
-      username: user.username,
-      createdAt: now * 1000,
-      read: false,
-    }
-    
-    // Добавляем информацию об ответе с именем отправителя
-    if (replyTo) {
-      const replyToSender = db.prepare('SELECT display_name FROM users WHERE id = ?').get(replyTo.senderId) as any
-      msg.replyTo = {
-        ...replyTo,
-        senderName: replyToSender?.display_name || 'Unknown'
+    try {
+      if (!text?.trim()) return
+      
+      // Проверяем лимит символов
+      if (text.trim().length > 1000) {
+        console.error('Message too long:', text.length)
+        socket.emit('error', { message: 'Message too long' })
+        return
       }
+      
+      // Проверяем что пользователь является участником чата
+      const member = db.prepare('SELECT * FROM chat_members WHERE chat_id = ? AND user_id = ?').get(chatId, user.id)
+      if (!member) {
+        console.error('User not a member of chat:', user.id, chatId)
+        socket.emit('error', { message: 'Not a member of this chat' })
+        return
+      }
+      
+      const id = randomUUID()
+      const now = Math.floor(Date.now() / 1000)
+      
+      // Сохраняем информацию об ответе если есть
+      const replyToData = replyTo ? JSON.stringify(replyTo) : null
+      
+      console.log('Saving message:', { id, chatId, senderId: user.id, text: text.trim(), replyTo: replyToData })
+      db.prepare('INSERT INTO messages (id, chat_id, sender_id, text, created_at, reply_to) VALUES (?, ?, ?, ?, ?, ?)')
+        .run(id, chatId, user.id, text.trim(), now, replyToData)
+
+      // Получаем имя отправителя для ответа
+      const sender = db.prepare('SELECT display_name FROM users WHERE id = ?').get(user.id) as any
+      
+      const msg: any = {
+        id, 
+        chatId, 
+        text: text.trim(),
+        senderId: user.id,
+        username: user.username,
+        createdAt: now * 1000,
+        read: false,
+      }
+      
+      // Добавляем информацию об ответе с именем отправителя
+      if (replyTo) {
+        const replyToSender = db.prepare('SELECT display_name FROM users WHERE id = ?').get(replyTo.senderId) as any
+        msg.replyTo = {
+          ...replyTo,
+          senderName: replyToSender?.display_name || 'Unknown'
+        }
+      }
+      
+      console.log('Broadcasting message:', msg)
+      io.to(chatId).emit('message:new', msg)
+    } catch (err) {
+      console.error('Message send error:', err)
+      socket.emit('error', { message: 'Failed to send message' })
     }
-    
-    console.log('Broadcasting message:', msg)
-    io.to(chatId).emit('message:new', msg)
   })
 
   // Удаление сообщения
   socket.on('message:delete', ({ chatId, messageId, forEveryone }: { chatId: string; messageId: string; forEveryone: boolean }) => {
-    // Проверяем что пользователь является участником чата
-    const member = db.prepare('SELECT * FROM chat_members WHERE chat_id = ? AND user_id = ?').get(chatId, user.id)
-    if (!member) {
-      console.error('User not a member of chat:', user.id, chatId)
-      return
-    }
-    
-    // Проверяем что сообщение принадлежит пользователю
-    const message = db.prepare('SELECT * FROM messages WHERE id = ? AND sender_id = ?').get(messageId, user.id) as any
-    if (!message) {
-      console.error('Message not found or not owned by user:', messageId, user.id)
-      return
-    }
-    
-    if (forEveryone) {
-      // Удаляем сообщение полностью из базы данных для всех
-      db.prepare('DELETE FROM messages WHERE id = ?').run(messageId)
-      db.prepare('DELETE FROM hidden_messages WHERE message_id = ?').run(messageId)
-      console.log('Message deleted for everyone:', messageId)
+    try {
+      // Проверяем что пользователь является участником чата
+      const member = db.prepare('SELECT * FROM chat_members WHERE chat_id = ? AND user_id = ?').get(chatId, user.id)
+      if (!member) {
+        console.error('User not a member of chat:', user.id, chatId)
+        socket.emit('error', { message: 'Not a member of this chat' })
+        return
+      }
       
-      // Уведомляем всех участников чата
-      io.to(chatId).emit('message:deleted', { messageId, forEveryone: true })
-    } else {
-      // Скрываем сообщение только для текущего пользователя
-      db.prepare('INSERT OR IGNORE INTO hidden_messages (message_id, user_id) VALUES (?, ?)').run(messageId, user.id)
-      console.log('Message hidden for user:', messageId, user.id)
+      // Проверяем что сообщение принадлежит пользователю
+      const message = db.prepare('SELECT * FROM messages WHERE id = ? AND sender_id = ?').get(messageId, user.id) as any
+      if (!message) {
+        console.error('Message not found or not owned by user:', messageId, user.id)
+        socket.emit('error', { message: 'Message not found or not owned by you' })
+        return
+      }
       
-      // Уведомляем только текущего пользователя
-      socket.emit('message:deleted', { messageId, forEveryone: false })
+      if (forEveryone) {
+        // Удаляем сообщение полностью из базы данных для всех
+        db.prepare('DELETE FROM messages WHERE id = ?').run(messageId)
+        db.prepare('DELETE FROM hidden_messages WHERE message_id = ?').run(messageId)
+        console.log('Message deleted for everyone:', messageId)
+        
+        // Уведомляем всех участников чата
+        io.to(chatId).emit('message:deleted', { messageId, forEveryone: true })
+      } else {
+        // Скрываем сообщение только для текущего пользователя
+        db.prepare('INSERT OR IGNORE INTO hidden_messages (message_id, user_id) VALUES (?, ?)').run(messageId, user.id)
+        console.log('Message hidden for user:', messageId, user.id)
+        
+        // Уведомляем только текущего пользователя
+        socket.emit('message:deleted', { messageId, forEveryone: false })
+      }
+    } catch (err) {
+      console.error('Message delete error:', err)
+      socket.emit('error', { message: 'Failed to delete message' })
     }
   })
 
