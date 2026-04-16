@@ -73,8 +73,22 @@ export default function ChatWindow({ chatId, chatName, isOnline, userStatus, onM
         }
       }
       
+      const handleMessageDeleted = ({ messageId, forEveryone }: { messageId: string; forEveryone: boolean }) => {
+        console.log('Message deleted:', { messageId, forEveryone })
+        if (forEveryone) {
+          // Удаляем сообщение из списка
+          setMessages(prev => prev.filter(msg => msg.id !== messageId))
+        } else {
+          // Заменяем текст на "Сообщение удалено"
+          setMessages(prev => prev.map(msg => 
+            msg.id === messageId ? { ...msg, text: 'Сообщение удалено', deleted: true } as any : msg
+          ))
+        }
+      }
+      
       socket.on('message:new', handleNewMessage)
       socket.on('messages:read', handleMessagesRead)
+      socket.on('message:deleted', handleMessageDeleted)
       
       // Помечаем сообщения как прочитанные при открытии чата
       socket.emit('messages:read', { chatId })
@@ -82,6 +96,7 @@ export default function ChatWindow({ chatId, chatName, isOnline, userStatus, onM
       return () => {
         socket.off('message:new', handleNewMessage)
         socket.off('messages:read', handleMessagesRead)
+        socket.off('message:deleted', handleMessageDeleted)
       }
     }
   }, [chatId, userId])
@@ -132,6 +147,12 @@ export default function ChatWindow({ chatId, chatName, isOnline, userStatus, onM
     const text = input.trim()
     if (!text) return
     
+    // Проверяем лимит символов
+    if (text.length > 1000) {
+      alert('Сообщение слишком длинное. Максимум 1000 символов.')
+      return
+    }
+    
     try {
       const socket = (window as any).socket
       console.log('Sending message, socket:', !!socket, 'connected:', socket?.connected)
@@ -175,6 +196,30 @@ export default function ChatWindow({ chatId, chatName, isOnline, userStatus, onM
       const message = messages.find(m => m.id === contextMenu.messageId)
       if (message) {
         setReplyTo(message)
+      }
+      setContextMenu(null)
+    }
+  }
+
+  const handleCopyMessage = () => {
+    if (contextMenu) {
+      const message = messages.find(m => m.id === contextMenu.messageId)
+      if (message) {
+        navigator.clipboard.writeText(message.text)
+      }
+      setContextMenu(null)
+    }
+  }
+
+  const handleDeleteMessage = (forEveryone: boolean) => {
+    if (contextMenu) {
+      const socket = (window as any).socket
+      if (socket && socket.connected) {
+        socket.emit('message:delete', { 
+          chatId, 
+          messageId: contextMenu.messageId,
+          forEveryone 
+        })
       }
       setContextMenu(null)
     }
@@ -266,6 +311,23 @@ export default function ChatWindow({ chatId, chatName, isOnline, userStatus, onM
             <span className="context-menu-icon">↩️</span>
             Ответить
           </button>
+          <button className="context-menu-item" onClick={handleCopyMessage}>
+            <span className="context-menu-icon">📋</span>
+            Копировать
+          </button>
+          {messages.find(m => m.id === contextMenu.messageId)?.senderId === userId && (
+            <>
+              <div className="context-menu-divider" />
+              <button className="context-menu-item delete" onClick={() => handleDeleteMessage(false)}>
+                <span className="context-menu-icon">🗑️</span>
+                Удалить у себя
+              </button>
+              <button className="context-menu-item delete" onClick={() => handleDeleteMessage(true)}>
+                <span className="context-menu-icon">🗑️</span>
+                Удалить у всех
+              </button>
+            </>
+          )}
         </div>
       )}
 

@@ -333,6 +333,20 @@ const io = new Server(httpServer, {
 // Онлайн пользователи: userId -> { socketId, lastSeen }
 const onlineUsers = new Map<string, { socketId: string; lastSeen: number }>()
 
+// Функция для удаления старых сообщений (старше 7 дней)
+function cleanupOldMessages() {
+  const sevenDaysAgo = Math.floor(Date.now() / 1000) - (7 * 24 * 60 * 60)
+  const result = db.prepare('DELETE FROM messages WHERE created_at < ?').run(sevenDaysAgo)
+  if (result.changes > 0) {
+    console.log(`Deleted ${result.changes} messages older than 7 days`)
+  }
+}
+
+// Запускаем очистку каждые 24 часа
+setInterval(cleanupOldMessages, 24 * 60 * 60 * 1000)
+// Запускаем очистку при старте сервера
+cleanupOldMessages()
+
 io.use((socket, next) => {
   const token = socket.handshake.auth.token
   const user = verifyToken(token)
@@ -384,6 +398,12 @@ io.on('connection', (socket) => {
   socket.on('message:send', ({ chatId, text, replyTo }: { chatId: string; text: string; replyTo?: any }) => {
     if (!text?.trim()) return
     
+    // Проверяем лимит символов
+    if (text.trim().length > 1000) {
+      console.error('Message too long:', text.length)
+      return
+    }
+    
     // Проверяем что пользователь является участником чата
     const member = db.prepare('SELECT * FROM chat_members WHERE chat_id = ? AND user_id = ?').get(chatId, user.id)
     if (!member) {
@@ -425,6 +445,39 @@ io.on('connection', (socket) => {
     
     console.log('Broadcasting message:', msg)
     io.to(chatId).emit('message:new', msg)
+  })
+
+  // Удаление сообщения
+  socket.on('message:delete', ({ chatId, messageId, forEveryone }: { chatId: string; messageId: string; forEveryone: boolean }) => {
+    // Проверяем что пользователь является участником чата
+    const member = db.prepare('SELECT * FROM chat_members WHERE chat_id = ? AND user_id = ?').get(chatId, user.id)
+    if (!member) {
+      console.error('User not a member of chat:', user.id, chatId)
+      return
+    }
+    
+    // Проверяем что сообщение принадлежит пользователю
+    const message = db.prepare('SELECT * FROM messages WHERE id = ? AND sender_id = ?').get(messageId, user.id) as any
+    if (!message) {
+      console.error('Message not found or not owned by user:', messageId, user.id)
+      return
+    }
+    
+    if (forEveryone) {
+      // Удаляем сообщение полностью из базы данных
+      db.prepare('DELETE FROM messages WHERE id = ?').run(messageId)
+      console.log('Message deleted for everyone:', messageId)
+      
+      // Уведомляем всех участников чата
+      io.to(chatId).emit('message:deleted', { messageId, forEveryone: true })
+    } else {
+      // Помечаем сообщение как удаленное (заменяем текст)
+      db.prepare('UPDATE messages SET text = ? WHERE id = ?').run('Сообщение удалено', messageId)
+      console.log('Message deleted for self:', messageId)
+      
+      // Уведомляем только текущего пользователя
+      socket.emit('message:deleted', { messageId, forEveryone: false })
+    }
   })
 
   socket.on('disconnect', () => {

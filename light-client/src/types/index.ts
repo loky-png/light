@@ -14,6 +14,7 @@ export interface Message {
   text: string
   createdAt: Date
   read: boolean
+  deleted?: boolean
   replyTo?: {
     id: string
     senderId: string
