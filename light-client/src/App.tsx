@@ -109,6 +109,7 @@ export default function App() {
       // Подписываемся на обновления чатов через socket
       const socket = (window as any).socket
       if (socket) {
+        // Новое сообщение - обновляем превью
         socket.on('message:new', (msg: any) => {
           // Обновляем только превью последнего сообщения в списке чатов
           setChats(prev => prev.map(chat => {
@@ -121,6 +122,18 @@ export default function App() {
             }
             return chat
           }))
+        })
+        
+        // Новый чат создан - добавляем в список
+        socket.on('chat:created', (chat: any) => {
+          console.log('New chat created:', chat)
+          setChats(prev => {
+            // Проверяем что чата еще нет
+            if (prev.some(c => c.id === chat.id)) {
+              return prev
+            }
+            return [chat, ...prev]
+          })
         })
         
         // Отслеживаем онлайн статус

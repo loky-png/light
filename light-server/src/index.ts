@@ -239,18 +239,46 @@ app.post('/api/chats/direct', (req, res) => {
   db.prepare('INSERT INTO chat_members (chat_id, user_id) VALUES (?, ?), (?, ?)').run(chatId, user.id, chatId, userId)
 
   console.log('Chat created:', chatId)
-  return res.json({ 
-    chat: { 
-      id: chatId, 
-      type: 'direct', 
-      name: targetUser.display_name,
-      avatar: targetUser.avatar,
-      last_message: null,
-      last_message_time: null,
-      unread: 0,
-      otherUserId: userId
-    } 
-  })
+  
+  const newChat = { 
+    id: chatId, 
+    type: 'direct', 
+    name: targetUser.display_name,
+    avatar: targetUser.avatar,
+    last_message: null,
+    last_message_time: null,
+    unread: 0,
+    otherUserId: userId
+  }
+  
+  // Уведомляем ОБОИХ пользователей о новом чате через socket
+  const currentUserSocket = onlineUsers.get(user.id)
+  const targetUserSocket = onlineUsers.get(userId)
+  
+  if (currentUserSocket) {
+    const socket = io.sockets.sockets.get(currentUserSocket.socketId)
+    if (socket) {
+      socket.join(chatId)
+      socket.emit('chat:created', newChat)
+    }
+  }
+  
+  if (targetUserSocket) {
+    const socket = io.sockets.sockets.get(targetUserSocket.socketId)
+    if (socket) {
+      socket.join(chatId)
+      // Для второго пользователя имя чата - это имя создателя
+      const creator = db.prepare('SELECT display_name, avatar FROM users WHERE id = ?').get(user.id) as any
+      socket.emit('chat:created', {
+        ...newChat,
+        name: creator.display_name,
+        avatar: creator.avatar,
+        otherUserId: user.id
+      })
+    }
+  }
+  
+  return res.json({ chat: newChat })
 })
 
 // REST: получить онлайн пользователей с lastSeen
