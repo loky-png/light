@@ -44,27 +44,35 @@ export default function ChatWindow({ chatId, chatName, isOnline, userStatus, onM
     if (socket) {
       const handleNewMessage = (msg: any) => {
         console.log('New message received:', msg, 'current chatId:', chatId)
+        // КРИТИЧНО: проверяем что сообщение для ЭТОГО чата
         if (msg.chatId === chatId) {
           // Добавляем сообщение в список вместо перезагрузки
-          setMessages(prev => [...prev, {
-            id: msg.id,
-            chatId: msg.chatId,
-            senderId: msg.senderId,
-            text: msg.text,
-            createdAt: new Date(msg.createdAt),
-            read: msg.read || false,
-            replyTo: msg.replyTo
-          }])
+          setMessages(prev => {
+            // Проверяем что сообщение еще не добавлено (защита от дублей)
+            if (prev.some(m => m.id === msg.id)) {
+              return prev
+            }
+            return [...prev, {
+              id: msg.id,
+              chatId: msg.chatId,
+              senderId: msg.senderId,
+              text: msg.text,
+              createdAt: new Date(msg.createdAt),
+              read: msg.read || false,
+              replyTo: msg.replyTo
+            }]
+          })
           
           // Автоматически помечаем как прочитанное если чат открыт
           setTimeout(() => {
-            socket.emit('messages:read', { chatId })
+            socket.emit('messages:read', { chatId: msg.chatId })
           }, 500)
         }
       }
       
       const handleMessagesRead = ({ chatId: readChatId, userId: readUserId }: any) => {
         console.log('Messages read:', { readChatId, readUserId, currentChatId: chatId, currentUserId: userId })
+        // КРИТИЧНО: проверяем что это для ЭТОГО чата
         if (readChatId === chatId && readUserId !== userId) {
           // Помечаем наши сообщения как прочитанные
           setMessages(prev => prev.map(msg => 
@@ -75,20 +83,33 @@ export default function ChatWindow({ chatId, chatName, isOnline, userStatus, onM
       
       const handleMessageDeleted = ({ messageId, forEveryone }: { messageId: string; forEveryone: boolean }) => {
         console.log('Message deleted:', { messageId, forEveryone })
-        // Добавляем класс для анимации удаления
-        const messageElement = messagesRef.current[messageId]
-        if (messageElement) {
-          messageElement.classList.add('deleting')
-          // Удаляем из списка после анимации
-          setTimeout(() => {
-            setMessages(prev => prev.filter(msg => msg.id !== messageId))
-          }, 200)
-        } else {
-          // Если элемента нет, удаляем сразу
-          setMessages(prev => prev.filter(msg => msg.id !== messageId))
-        }
+        // Удаляем только если сообщение в текущем списке
+        setMessages(prev => {
+          const messageExists = prev.some(m => m.id === messageId)
+          if (!messageExists) return prev
+          
+          // Добавляем класс для анимации удаления
+          const messageElement = messagesRef.current[messageId]
+          if (messageElement) {
+            messageElement.classList.add('deleting')
+            // Удаляем из списка после анимации
+            setTimeout(() => {
+              setMessages(p => p.filter(msg => msg.id !== messageId))
+            }, 200)
+            return prev
+          } else {
+            // Если элемента нет, удаляем сразу
+            return prev.filter(msg => msg.id !== messageId)
+          }
+        })
       }
       
+      // ВАЖНО: удаляем ВСЕ старые обработчики перед добавлением новых
+      socket.off('message:new')
+      socket.off('messages:read')
+      socket.off('message:deleted')
+      
+      // Добавляем новые обработчики
       socket.on('message:new', handleNewMessage)
       socket.on('messages:read', handleMessagesRead)
       socket.on('message:deleted', handleMessageDeleted)
@@ -97,6 +118,7 @@ export default function ChatWindow({ chatId, chatName, isOnline, userStatus, onM
       socket.emit('messages:read', { chatId })
       
       return () => {
+        // Отписываемся при размонтировании или смене чата
         socket.off('message:new', handleNewMessage)
         socket.off('messages:read', handleMessagesRead)
         socket.off('message:deleted', handleMessageDeleted)

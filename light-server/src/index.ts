@@ -194,26 +194,22 @@ app.post('/api/chats/direct', (req, res) => {
     return res.status(404).json({ error: 'User not found' })
   }
 
-  // Проверяем существует ли уже чат между этими пользователями (даже если текущий пользователь не участник)
+  // Проверяем существует ли уже чат между ЭТИМИ ДВУМЯ пользователями
   const existingChat = db.prepare(`
     SELECT c.id, c.name, c.type
     FROM chats c
-    JOIN chat_members cm ON cm.chat_id = c.id AND cm.user_id = ?
     WHERE c.type = 'direct'
+    AND c.id IN (
+      SELECT cm1.chat_id 
+      FROM chat_members cm1
+      JOIN chat_members cm2 ON cm1.chat_id = cm2.chat_id
+      WHERE cm1.user_id = ? AND cm2.user_id = ?
+    )
     LIMIT 1
-  `).get(userId) as any
+  `).get(user.id, userId) as any
 
   if (existingChat) {
-    console.log('Chat exists, checking membership:', existingChat.id)
-    
-    // Проверяем является ли текущий пользователь участником
-    const isMember = db.prepare('SELECT * FROM chat_members WHERE chat_id = ? AND user_id = ?').get(existingChat.id, user.id)
-    
-    if (!isMember) {
-      // Добавляем пользователя обратно в чат
-      console.log('Re-adding user to chat:', existingChat.id)
-      db.prepare('INSERT INTO chat_members (chat_id, user_id) VALUES (?, ?)').run(existingChat.id, user.id)
-    }
+    console.log('Chat already exists between users:', existingChat.id)
     
     // Возвращаем существующий чат с полными данными
     return res.json({ 
