@@ -36,6 +36,7 @@ function createWindow() {
     minHeight: 500,
     frame: false,
     backgroundColor: '#17212b',
+    icon: path.join(__dirname, '..', 'assets', 'light-logo.png'),
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
