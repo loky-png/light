@@ -2,9 +2,8 @@ import { app, BrowserWindow, ipcMain } from 'electron'
 import path from 'path'
 import axios from 'axios'
 
-// Генерируем уникальный ID для каждого окна
-const windowId = Date.now().toString()
-app.setPath('userData', path.join(app.getPath('userData'), windowId))
+// НЕ создаем уникальный ID - используем общую папку для сохранения данных
+// Это позволит сохранять токен между запусками приложения
 
 async function httpRequest(url: string, options: RequestInit): Promise<{ok: boolean, status: number, text: string}> {
   try {
