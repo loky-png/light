@@ -54,7 +54,40 @@ export default function Sidebar({ selectedChatId, onSelectChat, currentUser, onL
 
   const handleChatContextMenu = (e: React.MouseEvent, chatId: string) => {
     e.preventDefault()
-    setContextMenu({ chatId, x: e.clientX, y: e.clientY })
+    
+    // Получаем размеры окна
+    const windowWidth = window.innerWidth
+    const windowHeight = window.innerHeight
+    
+    // Примерные размеры меню
+    const menuWidth = 180
+    const menuHeight = 60
+    
+    // Вычисляем позицию чтобы меню не вылезало за границы
+    let x = e.clientX
+    let y = e.clientY
+    
+    // Проверяем правую границу
+    if (x + menuWidth > windowWidth) {
+      x = windowWidth - menuWidth - 10
+    }
+    
+    // Проверяем нижнюю границу
+    if (y + menuHeight > windowHeight) {
+      y = windowHeight - menuHeight - 10
+    }
+    
+    // Проверяем левую границу
+    if (x < 10) {
+      x = 10
+    }
+    
+    // Проверяем верхнюю границу
+    if (y < 10) {
+      y = 10
+    }
+    
+    setContextMenu({ chatId, x, y })
   }
 
   const handleDeleteFromContext = () => {

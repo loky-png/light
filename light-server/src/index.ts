@@ -512,15 +512,22 @@ io.on('connection', (socket) => {
         return
       }
       
-      // Проверяем что сообщение принадлежит пользователю
-      const message = db.prepare('SELECT * FROM messages WHERE id = ? AND sender_id = ?').get(messageId, user.id) as any
+      // Проверяем что сообщение существует
+      const message = db.prepare('SELECT * FROM messages WHERE id = ?').get(messageId) as any
       if (!message) {
-        console.error('Message not found or not owned by user:', messageId, user.id)
-        socket.emit('error', { message: 'Message not found or not owned by you' })
+        console.error('Message not found:', messageId)
+        socket.emit('error', { message: 'Message not found' })
         return
       }
       
       if (forEveryone) {
+        // Удалить у всех может только отправитель
+        if (message.sender_id !== user.id) {
+          console.error('User cannot delete message for everyone:', messageId, user.id)
+          socket.emit('error', { message: 'You can only delete your own messages for everyone' })
+          return
+        }
+        
         // Удаляем сообщение полностью из базы данных для всех
         db.prepare('DELETE FROM messages WHERE id = ?').run(messageId)
         db.prepare('DELETE FROM hidden_messages WHERE message_id = ?').run(messageId)
@@ -529,7 +536,7 @@ io.on('connection', (socket) => {
         // Уведомляем всех участников чата
         io.to(chatId).emit('message:deleted', { messageId, forEveryone: true })
       } else {
-        // Скрываем сообщение только для текущего пользователя
+        // Скрываем сообщение только для текущего пользователя (работает для любых сообщений)
         db.prepare('INSERT OR IGNORE INTO hidden_messages (message_id, user_id) VALUES (?, ?)').run(messageId, user.id)
         console.log('Message hidden for user:', messageId, user.id)
         
