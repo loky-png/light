@@ -33,7 +33,8 @@ db.exec(`
     sender_id TEXT NOT NULL,
     text TEXT NOT NULL,
     created_at INTEGER DEFAULT (unixepoch()),
-    read INTEGER DEFAULT 0
+    read INTEGER DEFAULT 0,
+    reply_to TEXT
   );
 `)
 
@@ -41,6 +42,14 @@ db.exec(`
 try {
   db.prepare('ALTER TABLE users ADD COLUMN avatar TEXT').run()
   console.log('Added avatar column to users table')
+} catch (e) {
+  // Колонка уже существует
+}
+
+// Добавляем колонку reply_to если её нет
+try {
+  db.prepare('ALTER TABLE messages ADD COLUMN reply_to TEXT').run()
+  console.log('Added reply_to column to messages table')
 } catch (e) {
   // Колонка уже существует
 }

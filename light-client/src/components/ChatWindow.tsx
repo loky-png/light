@@ -20,7 +20,10 @@ export default function ChatWindow({ chatId, chatName, isOnline, userStatus, onM
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(true)
+  const [replyTo, setReplyTo] = useState<Message | null>(null)
+  const [contextMenu, setContextMenu] = useState<{ messageId: string; x: number; y: number } | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
+  const messagesRef = useRef<Record<string, HTMLDivElement>>({})
   const userId = currentUserId
 
   console.log('ChatWindow userId:', userId)
@@ -49,7 +52,8 @@ export default function ChatWindow({ chatId, chatName, isOnline, userStatus, onM
             senderId: msg.senderId,
             text: msg.text,
             createdAt: new Date(msg.createdAt),
-            read: msg.read || false
+            read: msg.read || false,
+            replyTo: msg.replyTo
           }])
           
           // Автоматически помечаем как прочитанное если чат открыт
@@ -103,7 +107,13 @@ export default function ChatWindow({ chatId, chatName, isOnline, userStatus, onM
           senderId: m.sender_id,
           text: m.text,
           createdAt: new Date(m.created_at * 1000),
-          read: m.read === 1
+          read: m.read === 1,
+          replyTo: m.reply_to ? {
+            id: m.reply_to.id,
+            senderId: m.reply_to.senderId,
+            senderName: m.reply_to.senderName,
+            text: m.reply_to.text
+          } : undefined
         }))
         console.log('Mapped messages:', mapped)
         console.log('Current userId:', userId)
@@ -127,11 +137,22 @@ export default function ChatWindow({ chatId, chatName, isOnline, userStatus, onM
       console.log('Sending message, socket:', !!socket, 'connected:', socket?.connected)
       
       if (socket && socket.connected) {
-        socket.emit('message:send', { chatId, text })
-        setInput('')
-        console.log('Message sent:', { chatId, text })
+        const messageData: any = { chatId, text }
         
-        // НЕ перезагружаем сообщения - они придут через socket
+        // Добавляем информацию об ответе если есть
+        if (replyTo) {
+          messageData.replyTo = {
+            id: replyTo.id,
+            senderId: replyTo.senderId,
+            text: replyTo.text
+          }
+        }
+        
+        socket.emit('message:send', messageData)
+        setInput('')
+        setReplyTo(null)
+        console.log('Message sent:', messageData)
+        
         if (onMessageSent) {
           onMessageSent()
         }
@@ -141,6 +162,30 @@ export default function ChatWindow({ chatId, chatName, isOnline, userStatus, onM
       }
     } catch (err) {
       console.error('Send message error:', err)
+    }
+  }
+
+  const handleMessageContextMenu = (e: React.MouseEvent, message: Message) => {
+    e.preventDefault()
+    setContextMenu({ messageId: message.id, x: e.clientX, y: e.clientY })
+  }
+
+  const handleReply = () => {
+    if (contextMenu) {
+      const message = messages.find(m => m.id === contextMenu.messageId)
+      if (message) {
+        setReplyTo(message)
+      }
+      setContextMenu(null)
+    }
+  }
+
+  const scrollToMessage = (messageId: string) => {
+    const element = messagesRef.current[messageId]
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      element.classList.add('highlight')
+      setTimeout(() => element.classList.remove('highlight'), 1500)
     }
   }
 
@@ -162,7 +207,7 @@ export default function ChatWindow({ chatId, chatName, isOnline, userStatus, onM
         </div>
       </div>
 
-      <div className="messages-list">
+      <div className="messages-list" onClick={() => setContextMenu(null)}>
         {loading ? (
           <div style={{ textAlign: 'center', padding: '20px', color: 'var(--text-muted)' }}>Загрузка...</div>
         ) : messages.length === 0 ? (
@@ -177,8 +222,27 @@ export default function ChatWindow({ chatId, chatName, isOnline, userStatus, onM
             const prevMsg = messages[i - 1]
             const showTail = !prevMsg || prevMsg.senderId !== msg.senderId
             return (
-              <div key={msg.id} className={`message ${isOut ? 'out' : 'in'} ${showTail ? 'tail' : ''}`}>
+              <div 
+                key={msg.id} 
+                ref={el => { if (el) messagesRef.current[msg.id] = el }}
+                className={`message ${isOut ? 'out' : 'in'} ${showTail ? 'tail' : ''}`}
+                onContextMenu={(e) => handleMessageContextMenu(e, msg)}
+              >
                 <div className="message-bubble">
+                  {msg.replyTo && (
+                    <div 
+                      className="message-reply" 
+                      onClick={() => scrollToMessage(msg.replyTo!.id)}
+                    >
+                      <div className="message-reply-line" />
+                      <div className="message-reply-content">
+                        <span className="message-reply-name">
+                          {msg.replyTo.senderId === userId ? 'Вы' : msg.replyTo.senderName}
+                        </span>
+                        <span className="message-reply-text">{msg.replyTo.text}</span>
+                      </div>
+                    </div>
+                  )}
                   <span className="message-text">{msg.text}</span>
                   <span className="message-meta">
                     {formatTime(msg.createdAt)}
@@ -192,21 +256,48 @@ export default function ChatWindow({ chatId, chatName, isOnline, userStatus, onM
         <div ref={bottomRef} />
       </div>
 
+      {contextMenu && (
+        <div 
+          className="message-context-menu" 
+          style={{ top: contextMenu.y, left: contextMenu.x }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button className="context-menu-item" onClick={handleReply}>
+            <span className="context-menu-icon">↩️</span>
+            Ответить
+          </button>
+        </div>
+      )}
+
       <div className="chat-input-area">
-        <input
-          type="text"
-          className="chat-input"
-          placeholder="Написать сообщение..."
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          onKeyDown={handleKeyDown}
-        />
-        <button className="send-btn" onClick={sendMessage} disabled={!input.trim()} aria-label="Отправить">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-            <path d="M22 2L11 13" stroke="white" strokeWidth="2" strokeLinecap="round"/>
-            <path d="M22 2L15 22L11 13L2 9L22 2Z" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-        </button>
+        {replyTo && (
+          <div className="reply-preview">
+            <div className="reply-preview-line" />
+            <div className="reply-preview-content">
+              <span className="reply-preview-name">
+                {replyTo.senderId === userId ? 'Вы' : chatName}
+              </span>
+              <span className="reply-preview-text">{replyTo.text}</span>
+            </div>
+            <button className="reply-preview-close" onClick={() => setReplyTo(null)}>✕</button>
+          </div>
+        )}
+        <div className="chat-input-wrapper">
+          <input
+            type="text"
+            className="chat-input"
+            placeholder="Написать сообщение..."
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+          />
+          <button className="send-btn" onClick={sendMessage} disabled={!input.trim()} aria-label="Отправить">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+              <path d="M22 2L11 13" stroke="white" strokeWidth="2" strokeLinecap="round"/>
+              <path d="M22 2L15 22L11 13L2 9L22 2Z" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </button>
+        </div>
       </div>
     </div>
   )

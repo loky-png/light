@@ -78,12 +78,13 @@
 
 .message-bubble {
   padding: 8px 12px 6px;
-  border-radius: 16px;
+  border-radius: 18px;
   position: relative;
   display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 6px;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 100%;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
 /* Хвостик у первого сообщения в группе */
@@ -106,9 +107,75 @@
   color: var(--text-primary);
 }
 
+.message-reply {
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.1);
+  margin-bottom: 4px;
+  cursor: pointer;
+  transition: background 0.15s;
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.message-reply:hover {
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.message.in .message-reply {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.message.in .message-reply:hover {
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.message-reply-line {
+  width: 3px;
+  border-radius: 2px;
+  background: var(--accent);
+  flex-shrink: 0;
+}
+
+.message-reply-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.message-reply-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.message.in .message-reply-name {
+  color: var(--accent);
+}
+
+.message-reply-text {
+  font-size: 13px;
+  opacity: 0.8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.message.highlight {
+  animation: messageHighlight 1.5s ease;
+}
+
+@keyframes messageHighlight {
+  0%, 100% { background: transparent; }
+  50% { background: rgba(82, 136, 193, 0.2); border-radius: 8px; }
+}
+
 .message-text {
-  font-size: 14.5px;
-  line-height: 1.5;
+  font-size: 15px;
+  line-height: 1.4;
   word-break: break-word;
   flex: 1;
   min-width: 0;
@@ -116,7 +183,7 @@
 
 .message-meta {
   font-size: 11px;
-  opacity: 0.55;
+  opacity: 0.65;
   white-space: nowrap;
   display: flex;
   align-items: center;
@@ -124,6 +191,7 @@
   align-self: flex-end;
   margin-left: auto;
   padding-left: 8px;
+  margin-top: -2px;
 }
 
 .message.out .message-meta {
@@ -139,10 +207,102 @@
 .chat-input-area {
   padding: 10px 14px;
   display: flex;
-  align-items: center;
-  gap: 10px;
+  flex-direction: column;
+  gap: 8px;
   background: var(--glass-bg-strong);
   border-top: 1px solid var(--glass-border);
+}
+
+.reply-preview {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--glass-bg);
+  border-radius: 12px;
+  border: 1px solid var(--glass-border);
+}
+
+.reply-preview-line {
+  width: 3px;
+  height: 100%;
+  min-height: 32px;
+  border-radius: 2px;
+  background: var(--accent);
+  flex-shrink: 0;
+}
+
+.reply-preview-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.reply-preview-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.reply-preview-text {
+  font-size: 13px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.reply-preview-close {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: none;
+  background: var(--glass-hover);
+  color: var(--text-secondary);
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+
+.reply-preview-close:hover {
+  background: var(--glass-border);
+  color: var(--text-primary);
+}
+
+.chat-input-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.message-context-menu {
+  position: fixed;
+  background: var(--glass-bg-strong);
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  padding: 6px;
+  backdrop-filter: blur(20px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  z-index: 10000;
+  min-width: 160px;
+  animation: contextMenuSlideIn 0.15s ease-out;
+}
+
+@keyframes contextMenuSlideIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(-5px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
 }
 
 .chat-input {

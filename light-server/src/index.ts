@@ -290,7 +290,7 @@ app.get('/api/chats/:chatId/messages', (req, res) => {
   }
 
   const messages = db.prepare(`
-    SELECT m.id, m.chat_id, m.sender_id, m.text, m.created_at, m.read, u.username, u.display_name
+    SELECT m.id, m.chat_id, m.sender_id, m.text, m.created_at, m.read, m.reply_to, u.username, u.display_name
     FROM messages m
     JOIN users u ON u.id = m.sender_id
     WHERE m.chat_id = ?
@@ -298,11 +298,31 @@ app.get('/api/chats/:chatId/messages', (req, res) => {
     LIMIT 100
   `).all(chatId) as any[]
 
-  console.log(`Loaded ${messages.length} messages for chat ${chatId}, user ${user.id}`)
-  if (messages.length > 0) {
-    console.log('Sample message:', JSON.stringify(messages[0]))
+  // Парсим reply_to из JSON
+  const messagesWithReply = messages.map(msg => {
+    if (msg.reply_to) {
+      try {
+        const replyData = JSON.parse(msg.reply_to)
+        const replyToSender = db.prepare('SELECT display_name FROM users WHERE id = ?').get(replyData.senderId) as any
+        return {
+          ...msg,
+          reply_to: {
+            ...replyData,
+            senderName: replyToSender?.display_name || 'Unknown'
+          }
+        }
+      } catch (e) {
+        return msg
+      }
+    }
+    return msg
+  })
+
+  console.log(`Loaded ${messagesWithReply.length} messages for chat ${chatId}, user ${user.id}`)
+  if (messagesWithReply.length > 0) {
+    console.log('Sample message:', JSON.stringify(messagesWithReply[0]))
   }
-  return res.json(messages)
+  return res.json(messagesWithReply)
 })
 
 // Socket.IO
@@ -361,7 +381,7 @@ io.on('connection', (socket) => {
   })
 
   // Отправка сообщения
-  socket.on('message:send', ({ chatId, text }: { chatId: string; text: string }) => {
+  socket.on('message:send', ({ chatId, text, replyTo }: { chatId: string; text: string; replyTo?: any }) => {
     if (!text?.trim()) return
     
     // Проверяем что пользователь является участником чата
@@ -374,11 +394,17 @@ io.on('connection', (socket) => {
     const id = randomUUID()
     const now = Math.floor(Date.now() / 1000)
     
-    console.log('Saving message:', { id, chatId, senderId: user.id, text: text.trim() })
-    db.prepare('INSERT INTO messages (id, chat_id, sender_id, text, created_at) VALUES (?, ?, ?, ?, ?)')
-      .run(id, chatId, user.id, text.trim(), now)
+    // Сохраняем информацию об ответе если есть
+    const replyToData = replyTo ? JSON.stringify(replyTo) : null
+    
+    console.log('Saving message:', { id, chatId, senderId: user.id, text: text.trim(), replyTo: replyToData })
+    db.prepare('INSERT INTO messages (id, chat_id, sender_id, text, created_at, reply_to) VALUES (?, ?, ?, ?, ?, ?)')
+      .run(id, chatId, user.id, text.trim(), now, replyToData)
 
-    const msg = {
+    // Получаем имя отправителя для ответа
+    const sender = db.prepare('SELECT display_name FROM users WHERE id = ?').get(user.id) as any
+    
+    const msg: any = {
       id, 
       chatId, 
       text: text.trim(),
@@ -386,6 +412,15 @@ io.on('connection', (socket) => {
       username: user.username,
       createdAt: now * 1000,
       read: false,
+    }
+    
+    // Добавляем информацию об ответе с именем отправителя
+    if (replyTo) {
+      const replyToSender = db.prepare('SELECT display_name FROM users WHERE id = ?').get(replyTo.senderId) as any
+      msg.replyTo = {
+        ...replyTo,
+        senderName: replyToSender?.display_name || 'Unknown'
+      }
     }
     
     console.log('Broadcasting message:', msg)
