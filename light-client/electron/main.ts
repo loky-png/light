@@ -37,6 +37,7 @@ function createWindow() {
     frame: false,
     backgroundColor: '#17212b',
     icon: path.join(__dirname, '..', 'assets', 'light-logo.png'),
+    title: 'Light',
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -44,6 +45,11 @@ function createWindow() {
       webSecurity: false,
     },
   })
+
+  // Устанавливаем иконку для Windows
+  if (process.platform === 'win32') {
+    win.setIcon(path.join(__dirname, '..', 'assets', 'light-logo.png'))
+  }
 
   win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'))
   win.webContents.openDevTools({ mode: 'detach' })
