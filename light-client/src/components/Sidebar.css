@@ -189,31 +189,65 @@
   box-shadow: 0 2px 8px var(--accent-glow);
 }
 
-.chat-delete-btn {
-  width: 24px;
-  height: 24px;
-  min-width: 24px;
-  border-radius: 50%;
-  background: rgba(255, 71, 87, 0.1);
-  border: 1px solid rgba(255, 71, 87, 0.3);
-  color: #ff4757;
+.context-menu {
+  position: fixed;
+  background: var(--glass-bg-strong);
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  padding: 6px;
+  backdrop-filter: blur(20px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  z-index: 10000;
+  min-width: 180px;
+  animation: contextMenuSlideIn 0.15s ease-out;
+}
+
+@keyframes contextMenuSlideIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(-5px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.context-menu-item {
+  width: 100%;
+  padding: 10px 14px;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  color: var(--text-primary);
   font-size: 14px;
+  font-weight: 500;
   cursor: pointer;
-  display: none;
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+}
+
+.context-menu-item:hover {
+  background: var(--glass-hover);
+}
+
+.context-menu-item.delete {
+  color: #ff4757;
+}
+
+.context-menu-item.delete:hover {
+  background: rgba(255, 71, 87, 0.1);
+}
+
+.context-menu-icon {
+  font-size: 16px;
+  width: 20px;
+  display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.2s ease;
-  margin-left: 8px;
-}
-
-.chat-item:hover .chat-delete-btn {
-  display: flex;
-}
-
-.chat-delete-btn:hover {
-  background: rgba(255, 71, 87, 0.2);
-  border-color: #ff4757;
-  transform: scale(1.1);
 }
 
 .sidebar-actions {

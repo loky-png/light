@@ -25,6 +25,7 @@ export default function Sidebar({ selectedChatId, onSelectChat, currentUser, onL
   const [searchResults, setSearchResults] = useState<any[]>([])
   const [isSearching, setIsSearching] = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
+  const [contextMenu, setContextMenu] = useState<{ chatId: string; x: number; y: number } | null>(null)
   const { theme, toggleTheme } = useTheme()
 
   const getInitials = (name: string) => {
@@ -51,15 +52,22 @@ export default function Sidebar({ selectedChatId, onSelectChat, currentUser, onL
     }
   }
 
+  const handleChatContextMenu = (e: React.MouseEvent, chatId: string) => {
+    e.preventDefault()
+    setContextMenu({ chatId, x: e.clientX, y: e.clientY })
+  }
+
+  const handleDeleteFromContext = () => {
+    if (contextMenu) {
+      setDeleteConfirm(contextMenu.chatId)
+      setContextMenu(null)
+    }
+  }
+
   const handleCancelEdit = () => {
     setEditName(currentUser.displayName)
     setEditUsername(currentUser.username)
     setIsEditing(false)
-  }
-
-  const handleDeleteChat = async (chatId: string, e: React.MouseEvent) => {
-    e.stopPropagation()
-    setDeleteConfirm(chatId)
   }
 
   const confirmDelete = async () => {
@@ -80,6 +88,11 @@ export default function Sidebar({ selectedChatId, onSelectChat, currentUser, onL
     } finally {
       setDeleteConfirm(null)
     }
+  }
+
+  // Закрываем контекстное меню при клике вне его
+  const handleClickOutside = () => {
+    setContextMenu(null)
   }
 
   const handleSearch = async (query: string) => {
@@ -150,7 +163,7 @@ export default function Sidebar({ selectedChatId, onSelectChat, currentUser, onL
   }
 
   return (
-    <aside className="sidebar">
+    <aside className="sidebar" onClick={handleClickOutside}>
       <div className="sidebar-header">
         <span className="sidebar-logo">☀ Light</span>
         <div className="sidebar-actions">
@@ -254,7 +267,12 @@ export default function Sidebar({ selectedChatId, onSelectChat, currentUser, onL
           </div>
         )}
         {!isSearching && chats.map(chat => (
-          <li key={chat.id} className={`chat-item ${selectedChatId === chat.id ? 'active' : ''}`} onClick={() => onSelectChat(chat.id)}>
+          <li 
+            key={chat.id} 
+            className={`chat-item ${selectedChatId === chat.id ? 'active' : ''}`} 
+            onClick={() => onSelectChat(chat.id)}
+            onContextMenu={(e) => handleChatContextMenu(e, chat.id)}
+          >
             <div className="chat-avatar">
               {chat.avatar ? (
                 <img src={chat.avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} />
@@ -273,12 +291,22 @@ export default function Sidebar({ selectedChatId, onSelectChat, currentUser, onL
                 {chat.unread > 0 && <span className="unread-badge">{chat.unread}</span>}
               </div>
             </div>
-            <button className="chat-delete-btn" onClick={(e) => handleDeleteChat(chat.id, e)} aria-label="Удалить чат">
-              ✕
-            </button>
           </li>
         ))}
       </ul>
+      
+      {contextMenu && (
+        <div 
+          className="context-menu" 
+          style={{ top: contextMenu.y, left: contextMenu.x }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button className="context-menu-item delete" onClick={handleDeleteFromContext}>
+            <span className="context-menu-icon">🗑️</span>
+            Удалить чат
+          </button>
+        </div>
+      )}
       
       {deleteConfirm && (
         <div className="modal-overlay" onClick={() => setDeleteConfirm(null)}>
