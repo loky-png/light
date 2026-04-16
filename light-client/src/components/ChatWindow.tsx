@@ -151,7 +151,7 @@ export default function ChatWindow({ chatId, chatName, isOnline, userStatus, onM
     const text = input.trim()
     if (!text) return
     
-    // Проверяем лимит символов
+    // Проверяем лимит символов НА КЛИЕНТЕ
     if (text.length > 1000) {
       alert('Сообщение слишком длинное. Максимум 1000 символов.')
       return
@@ -160,6 +160,11 @@ export default function ChatWindow({ chatId, chatName, isOnline, userStatus, onM
     try {
       const socket = (window as any).socket
       console.log('Sending message, socket:', !!socket, 'connected:', socket?.connected)
+      
+      if (!socket || !socket.connected) {
+        alert('Нет соединения с сервером. Проверьте интернет.')
+        return
+      }
       
       if (socket && socket.connected) {
         const messageData: any = { chatId, text }
@@ -181,9 +186,6 @@ export default function ChatWindow({ chatId, chatName, isOnline, userStatus, onM
         if (onMessageSent) {
           onMessageSent()
         }
-      } else {
-        console.error('Socket not connected')
-        alert('Нет соединения с сервером. Перезапустите приложение.')
       }
     } catch (err) {
       console.error('Send message error:', err)

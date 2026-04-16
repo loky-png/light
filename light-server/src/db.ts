@@ -49,6 +49,7 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at);
   CREATE INDEX IF NOT EXISTS idx_chat_members_user_id ON chat_members(user_id);
   CREATE INDEX IF NOT EXISTS idx_hidden_messages_user_id ON hidden_messages(user_id);
+  CREATE INDEX IF NOT EXISTS idx_hidden_messages_message_id ON hidden_messages(message_id);
 `)
 
 // Добавляем колонку avatar если её нет

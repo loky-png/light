@@ -1,6 +1,16 @@
 import { app, BrowserWindow, ipcMain } from 'electron'
 import path from 'path'
 import axios from 'axios'
+import { autoUpdater } from 'electron-updater'
+
+// Настройка автообновления
+autoUpdater.setFeedURL({
+  provider: 'generic',
+  url: 'http://155.212.167.68:80/updates/'
+})
+
+autoUpdater.autoDownload = false
+autoUpdater.autoInstallOnAppQuit = true
 
 // НЕ создаем уникальный ID - используем общую папку для сохранения данных
 // Это позволит сохранять токен между запусками приложения
@@ -44,8 +54,56 @@ function createWindow() {
     },
   })
 
+  // Отключаем анимацию ресайза для плавности
+  win.setBackgroundColor('#17212b')
+
   win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'))
-  win.webContents.openDevTools({ mode: 'detach' })
+  
+  // Открываем DevTools только в dev режиме
+  if (process.env.NODE_ENV === 'development') {
+    win.webContents.openDevTools({ mode: 'detach' })
+  }
+
+  // Проверка обновлений при запуске
+  setTimeout(() => {
+    autoUpdater.checkForUpdates().catch(err => {
+      console.log('Update check failed:', err)
+    })
+  }, 3000)
+
+  // События автообновления
+  autoUpdater.on('update-available', (info) => {
+    console.log('Update available:', info.version)
+    win.webContents.send('update-available', info)
+  })
+
+  autoUpdater.on('update-not-available', () => {
+    console.log('No updates available')
+  })
+
+  autoUpdater.on('download-progress', (progress) => {
+    console.log('Download progress:', progress.percent)
+    win.webContents.send('download-progress', progress)
+  })
+
+  autoUpdater.on('update-downloaded', (info) => {
+    console.log('Update downloaded:', info.version)
+    win.webContents.send('update-downloaded', info)
+  })
+
+  autoUpdater.on('error', (err) => {
+    console.error('Update error:', err)
+    // Не крашим приложение при ошибке обновления
+  })
+
+  // IPC для управления обновлениями
+  ipcMain.on('download-update', () => {
+    autoUpdater.downloadUpdate()
+  })
+
+  ipcMain.on('install-update', () => {
+    autoUpdater.quitAndInstall(false, true)
+  })
 
   ipcMain.on('window-minimize', () => win.minimize())
   ipcMain.on('window-maximize', () => win.isMaximized() ? win.unmaximize() : win.maximize())

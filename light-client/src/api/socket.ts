@@ -34,6 +34,10 @@ export function connectSocket(token: string): Socket {
     // Уведомляем UI о подключении
     window.dispatchEvent(new CustomEvent('socket:connected'))
     
+    // Переподключаемся ко всем чатам после reconnect
+    const reconnectEvent = new CustomEvent('socket:reconnect')
+    window.dispatchEvent(reconnectEvent)
+    
     // Запускаем пинг каждые 30 секунд
     pingInterval = setInterval(() => {
       if (socket?.connected) {

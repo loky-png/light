@@ -8,12 +8,13 @@
     "build": "tsc && vite build",
     "electron:dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
     "electron:build": "vite build && tsc -p tsconfig.electron.json && electron-builder",
+    "installer": "vite build && tsc -p tsconfig.electron.json && electron-builder --win nsis",
     "preview": "vite preview"
   },
   "build": {
     "appId": "com.light.messenger",
     "productName": "Light",
-    "asar": false,
+    "asar": true,
     "directories": {
       "output": "release"
     },
@@ -23,23 +24,45 @@
       "package.json"
     ],
     "win": {
-      "target": "nsis",
-      "icon": "assets/light-logo.png",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "sign": null,
       "signingHashAlgorithms": [],
-      "sign": null
+      "publisherName": "Light Messenger"
     },
     "nsis": {
       "oneClick": false,
+      "perMachine": false,
       "allowToChangeInstallationDirectory": true,
-      "installerIcon": "assets/light-logo.png",
-      "installerHeaderIcon": "assets/light-logo.png",
-      "createDesktopShortcut": true,
+      "allowElevation": true,
+      "installerIcon": null,
+      "uninstallerIcon": null,
+      "installerHeader": null,
+      "installerHeaderIcon": null,
+      "createDesktopShortcut": "always",
       "createStartMenuShortcut": true,
-      "shortcutName": "Light"
+      "shortcutName": "Light Messenger",
+      "deleteAppDataOnUninstall": false,
+      "runAfterFinish": true,
+      "menuCategory": false,
+      "artifactName": "Light-Setup.${ext}",
+      "license": null,
+      "warningsAsErrors": false
+    },
+    "publish": {
+      "provider": "generic",
+      "url": "http://155.212.167.68:80/updates/"
     }
   },
   "dependencies": {
     "axios": "^1.15.0",
+    "electron-updater": "^6.8.3",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "socket.io-client": "^4.8.3",

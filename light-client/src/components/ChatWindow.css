@@ -112,44 +112,44 @@
   box-shadow: 0 1px 1px rgba(0, 0, 0, 0.08);
 }
 
-/* Исходящие сообщения (справа) */
-/* Первое в группе - верх закруглен, низ прямой */
+/* ИСХОДЯЩИЕ (справа) - прямые углы СПРАВА */
+/* Первое в группе - правый нижний прямой */
 .message.out.first-in-group:not(.tail) .message-bubble {
   border-radius: 18px 18px 4px 18px;
 }
 
-/* Среднее в группе - верх и низ прямые */
+/* Среднее в группе - правый верх и низ прямые */
 .message.out:not(.first-in-group):not(.tail) .message-bubble {
-  border-radius: 4px 18px 4px 18px;
+  border-radius: 18px 4px 4px 18px;
 }
 
-/* Последнее в группе - верх прямой, низ с хвостиком */
+/* Последнее в группе - правый верх прямой, правый низ хвостик */
 .message.out.tail:not(.first-in-group) .message-bubble {
-  border-radius: 4px 18px 4px 4px;
+  border-radius: 18px 4px 4px 18px;
 }
 
-/* Одиночное сообщение - все закруглено + хвостик */
+/* Одиночное - правый нижний хвостик */
 .message.out.first-in-group.tail .message-bubble {
   border-radius: 18px 18px 4px 18px;
 }
 
-/* Входящие сообщения (слева) */
-/* Первое в группе - верх закруглен, низ прямой */
+/* ВХОДЯЩИЕ (слева) - прямые углы СЛЕВА */
+/* Первое в группе - левый нижний прямой */
 .message.in.first-in-group:not(.tail) .message-bubble {
   border-radius: 18px 18px 18px 4px;
 }
 
-/* Среднее в группе - верх и низ прямые */
+/* Среднее в группе - левый верх и низ прямые */
 .message.in:not(.first-in-group):not(.tail) .message-bubble {
-  border-radius: 18px 4px 18px 4px;
+  border-radius: 4px 18px 18px 4px;
 }
 
-/* Последнее в группе - верх прямой, низ с хвостиком */
+/* Последнее в группе - левый верх прямой, левый низ хвостик */
 .message.in.tail:not(.first-in-group) .message-bubble {
-  border-radius: 18px 4px 18px 4px;
+  border-radius: 4px 18px 18px 4px;
 }
 
-/* Одиночное сообщение - все закруглено + хвостик */
+/* Одиночное - левый нижний хвостик */
 .message.in.first-in-group.tail .message-bubble {
   border-radius: 18px 18px 18px 4px;
 }

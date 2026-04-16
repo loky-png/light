@@ -137,21 +137,29 @@ export default function Sidebar({ selectedChatId, onSelectChat, currentUser, onL
     }
 
     setIsSearching(true)
-    try {
-      const lightAPI = (window as any).lightAPI
-      const result = await lightAPI.fetch(`http://155.212.167.68:80/api/users/search?q=${encodeURIComponent(query)}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      })
-      
-      if (result.ok) {
-        const users = JSON.parse(result.text)
-        // Фильтруем текущего пользователя
-        const filtered = users.filter((u: any) => u.id !== currentUser.id)
-        setSearchResults(filtered)
-      }
-    } catch (err) {
-      console.error('Search error:', err)
+    
+    // Debounce - ждем 300ms перед поиском
+    if ((window as any).searchTimeout) {
+      clearTimeout((window as any).searchTimeout)
     }
+    
+    (window as any).searchTimeout = setTimeout(async () => {
+      try {
+        const lightAPI = (window as any).lightAPI
+        const result = await lightAPI.fetch(`http://155.212.167.68:80/api/users/search?q=${encodeURIComponent(query)}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        })
+        
+        if (result.ok) {
+          const users = JSON.parse(result.text)
+          // Фильтруем текущего пользователя
+          const filtered = users.filter((u: any) => u.id !== currentUser.id)
+          setSearchResults(filtered)
+        }
+      } catch (err) {
+        console.error('Search error:', err)
+      }
+    }, 300)
   }
 
   const handleSelectUser = async (userId: string) => {
