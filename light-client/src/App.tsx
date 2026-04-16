@@ -104,6 +104,24 @@ export default function App() {
       connectSocket(token)
       // Загружаем чаты сразу после подключения socket
       loadChats()
+      
+      // Подписываемся на обновления чатов через socket
+      const socket = (window as any).socket
+      if (socket) {
+        socket.on('message:new', (msg: any) => {
+          // Обновляем только превью последнего сообщения в списке чатов
+          setChats(prev => prev.map(chat => {
+            if (chat.id === msg.chatId) {
+              return {
+                ...chat,
+                last_message: msg.text,
+                last_message_time: Math.floor(msg.createdAt / 1000)
+              }
+            }
+            return chat
+          }))
+        })
+      }
     }
   }, [token])
 
@@ -214,7 +232,7 @@ export default function App() {
                 chatId={selectedChatId}
                 chatName={chats.find(c => c.id === selectedChatId)?.name || 'Чат'}
                 isOnline={false}
-                onMessageSent={loadChats}
+                onMessageSent={() => {}}
                 currentUserId={user.id}
                 token={token}
               />

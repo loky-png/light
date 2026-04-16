@@ -25,13 +25,13 @@ export default function TitleBar({ username }: TitleBarProps) {
       <div className="titlebar-drag" />
       <span className="titlebar-title">Light {username ? `· ${username}` : ''}</span>
       <div className="titlebar-controls">
-        <button className="tb-btn tb-close" onClick={close} title="Закрыть">
+        <button className="tb-btn tb-close" onClick={close} aria-label="Закрыть">
           <span />
         </button>
-        <button className="tb-btn tb-minimize" onClick={minimize} title="Свернуть">
+        <button className="tb-btn tb-minimize" onClick={minimize} aria-label="Свернуть">
           <span />
         </button>
-        <button className="tb-btn tb-maximize" onClick={maximize} title="Развернуть">
+        <button className="tb-btn tb-maximize" onClick={maximize} aria-label="Развернуть">
           <span />
         </button>
       </div>

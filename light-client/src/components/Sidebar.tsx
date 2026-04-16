@@ -153,10 +153,10 @@ export default function Sidebar({ selectedChatId, onSelectChat, currentUser, onL
       <div className="sidebar-header">
         <span className="sidebar-logo">☀ Light</span>
         <div className="sidebar-actions">
-          <button className="theme-toggle" onClick={toggleTheme} title={theme === 'dark' ? 'Светлая тема' : 'Тёмная тема'}>
+          <button className="theme-toggle" onClick={toggleTheme} aria-label={theme === 'dark' ? 'Светлая тема' : 'Тёмная тема'}>
             {theme === 'dark' ? '🌙' : '☀️'}
           </button>
-          <button className="settings-btn" onClick={() => setShowSettings(!showSettings)} title="Настройки">
+          <button className="settings-btn" onClick={() => setShowSettings(!showSettings)} aria-label="Настройки">
             ⚙️
           </button>
         </div>
@@ -271,7 +271,7 @@ export default function Sidebar({ selectedChatId, onSelectChat, currentUser, onL
                 {chat.unread > 0 && <span className="unread-badge">{chat.unread}</span>}
               </div>
             </div>
-            <button className="chat-delete-btn" onClick={(e) => handleDeleteChat(chat.id, e)} title="Удалить чат">
+            <button className="chat-delete-btn" onClick={(e) => handleDeleteChat(chat.id, e)} aria-label="Удалить чат">
               ✕
             </button>
           </li>

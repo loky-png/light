@@ -33,8 +33,15 @@ export default function ChatWindow({ chatId, chatName, isOnline, onMessageSent, 
       const handleNewMessage = (msg: any) => {
         console.log('New message received:', msg, 'current chatId:', chatId)
         if (msg.chatId === chatId) {
-          // Перезагружаем все сообщения с сервера вместо добавления локально
-          loadMessages()
+          // Добавляем сообщение в список вместо перезагрузки
+          setMessages(prev => [...prev, {
+            id: msg.id,
+            chatId: msg.chatId,
+            senderId: msg.senderId,
+            text: msg.text,
+            createdAt: new Date(msg.createdAt),
+            read: msg.read || false
+          }])
         }
       }
       
@@ -94,13 +101,10 @@ export default function ChatWindow({ chatId, chatName, isOnline, onMessageSent, 
         setInput('')
         console.log('Message sent:', { chatId, text })
         
-        // Сразу перезагружаем сообщения с сервера
-        setTimeout(() => {
-          loadMessages()
-          if (onMessageSent) {
-            onMessageSent()
-          }
-        }, 300)
+        // НЕ перезагружаем сообщения - они придут через socket
+        if (onMessageSent) {
+          onMessageSent()
+        }
       } else {
         console.error('Socket not connected')
         alert('Нет соединения с сервером. Перезапустите приложение.')
