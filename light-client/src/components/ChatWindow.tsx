@@ -37,92 +37,115 @@ export default function ChatWindow({ chatId, chatName, isOnline, userStatus, onM
   }
 
   useEffect(() => {
+    // Очищаем сообщения при смене чата
+    setMessages([])
+    setLoading(true)
+    
     loadMessages()
     
     // Подписываемся на новые сообщения
     const socket = (window as any).socket
-    if (socket) {
-      const handleNewMessage = (msg: any) => {
-        console.log('New message received:', msg, 'current chatId:', chatId)
-        // КРИТИЧНО: проверяем что сообщение для ЭТОГО чата
-        if (msg.chatId === chatId) {
-          // Добавляем сообщение в список вместо перезагрузки
-          setMessages(prev => {
-            // Проверяем что сообщение еще не добавлено (защита от дублей)
-            if (prev.some(m => m.id === msg.id)) {
-              return prev
-            }
-            return [...prev, {
-              id: msg.id,
-              chatId: msg.chatId,
-              senderId: msg.senderId,
-              text: msg.text,
-              createdAt: new Date(msg.createdAt),
-              read: msg.read || false,
-              replyTo: msg.replyTo
-            }]
-          })
-          
-          // Автоматически помечаем как прочитанное если чат открыт
+    if (!socket) return
+    
+    const handleNewMessage = (msg: any) => {
+      console.log('[ChatWindow] New message received:', msg, 'current chatId:', chatId)
+      // КРИТИЧНО: проверяем что сообщение для ЭТОГО чата
+      if (msg.chatId !== chatId) {
+        console.log('[ChatWindow] Message for different chat, ignoring')
+        return
+      }
+      
+      // Добавляем сообщение в список
+      setMessages(prev => {
+        // Проверяем что сообщение еще не добавлено (защита от дублей)
+        if (prev.some(m => m.id === msg.id)) {
+          console.log('[ChatWindow] Message already exists, skipping')
+          return prev
+        }
+        console.log('[ChatWindow] Adding message to chat')
+        return [...prev, {
+          id: msg.id,
+          chatId: msg.chatId,
+          senderId: msg.senderId,
+          text: msg.text,
+          createdAt: new Date(msg.createdAt),
+          read: msg.read || false,
+          replyTo: msg.replyTo
+        }]
+      })
+      
+      // Автоматически помечаем как прочитанное если чат открыт
+      setTimeout(() => {
+        if (socket.connected) {
+          socket.emit('messages:read', { chatId: msg.chatId })
+        }
+      }, 500)
+    }
+    
+    const handleMessagesRead = ({ chatId: readChatId, userId: readUserId }: any) => {
+      console.log('[ChatWindow] Messages read:', { readChatId, readUserId, currentChatId: chatId, currentUserId: userId })
+      // КРИТИЧНО: проверяем что это для ЭТОГО чата
+      if (readChatId !== chatId) {
+        return
+      }
+      
+      if (readUserId !== userId) {
+        // Помечаем наши сообщения как прочитанные
+        setMessages(prev => prev.map(msg => 
+          msg.senderId === userId ? { ...msg, read: true } : msg
+        ))
+      }
+    }
+    
+    const handleMessageDeleted = ({ messageId, forEveryone }: { messageId: string; forEveryone: boolean }) => {
+      console.log('[ChatWindow] Message deleted:', { messageId, forEveryone })
+      // Удаляем только если сообщение в текущем списке
+      setMessages(prev => {
+        const messageExists = prev.some(m => m.id === messageId)
+        if (!messageExists) return prev
+        
+        // Добавляем класс для анимации удаления
+        const messageElement = messagesRef.current[messageId]
+        if (messageElement) {
+          messageElement.classList.add('deleting')
+          // Удаляем из списка после анимации
           setTimeout(() => {
-            socket.emit('messages:read', { chatId: msg.chatId })
-          }, 500)
+            setMessages(p => p.filter(msg => msg.id !== messageId))
+          }, 200)
+          return prev
+        } else {
+          // Если элемента нет, удаляем сразу
+          return prev.filter(msg => msg.id !== messageId)
         }
-      }
-      
-      const handleMessagesRead = ({ chatId: readChatId, userId: readUserId }: any) => {
-        console.log('Messages read:', { readChatId, readUserId, currentChatId: chatId, currentUserId: userId })
-        // КРИТИЧНО: проверяем что это для ЭТОГО чата
-        if (readChatId === chatId && readUserId !== userId) {
-          // Помечаем наши сообщения как прочитанные
-          setMessages(prev => prev.map(msg => 
-            msg.senderId === userId ? { ...msg, read: true } : msg
-          ))
-        }
-      }
-      
-      const handleMessageDeleted = ({ messageId, forEveryone }: { messageId: string; forEveryone: boolean }) => {
-        console.log('Message deleted:', { messageId, forEveryone })
-        // Удаляем только если сообщение в текущем списке
-        setMessages(prev => {
-          const messageExists = prev.some(m => m.id === messageId)
-          if (!messageExists) return prev
-          
-          // Добавляем класс для анимации удаления
-          const messageElement = messagesRef.current[messageId]
-          if (messageElement) {
-            messageElement.classList.add('deleting')
-            // Удаляем из списка после анимации
-            setTimeout(() => {
-              setMessages(p => p.filter(msg => msg.id !== messageId))
-            }, 200)
-            return prev
-          } else {
-            // Если элемента нет, удаляем сразу
-            return prev.filter(msg => msg.id !== messageId)
-          }
-        })
-      }
-      
-      // ВАЖНО: удаляем ВСЕ старые обработчики перед добавлением новых
-      socket.off('message:new')
-      socket.off('messages:read')
-      socket.off('message:deleted')
-      
-      // Добавляем новые обработчики
-      socket.on('message:new', handleNewMessage)
-      socket.on('messages:read', handleMessagesRead)
-      socket.on('message:deleted', handleMessageDeleted)
-      
-      // Помечаем сообщения как прочитанные при открытии чата
+      })
+    }
+    
+    // ВАЖНО: создаем уникальные обработчики для ЭТОГО чата
+    // (переменные для отладки, не используются в коде)
+    
+    // Удаляем ВСЕ старые обработчики
+    socket.removeAllListeners('message:new')
+    socket.removeAllListeners('messages:read')
+    socket.removeAllListeners('message:deleted')
+    
+    // Добавляем новые обработчики
+    socket.on('message:new', handleNewMessage)
+    socket.on('messages:read', handleMessagesRead)
+    socket.on('message:deleted', handleMessageDeleted)
+    
+    console.log('[ChatWindow] Subscribed to chat:', chatId)
+    
+    // Помечаем сообщения как прочитанные при открытии чата
+    if (socket.connected) {
       socket.emit('messages:read', { chatId })
-      
-      return () => {
-        // Отписываемся при размонтировании или смене чата
-        socket.off('message:new', handleNewMessage)
-        socket.off('messages:read', handleMessagesRead)
-        socket.off('message:deleted', handleMessageDeleted)
-      }
+    }
+    
+    return () => {
+      console.log('[ChatWindow] Unsubscribing from chat:', chatId)
+      // Отписываемся при размонтировании или смене чата
+      socket.off('message:new', handleNewMessage)
+      socket.off('messages:read', handleMessagesRead)
+      socket.off('message:deleted', handleMessageDeleted)
     }
   }, [chatId, userId])
 
