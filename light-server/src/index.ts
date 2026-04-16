@@ -199,6 +199,16 @@ app.post('/api/chats/direct', (req, res) => {
   })
 })
 
+// REST: получить онлайн пользователей
+app.get('/api/users/online', (req, res) => {
+  const token = req.headers.authorization?.split(' ')[1]
+  const user = token ? verifyToken(token) : null
+  if (!user) return res.status(401).json({ error: 'Unauthorized' })
+
+  const onlineUserIds = Array.from(onlineUsers.keys())
+  return res.json({ online: onlineUserIds })
+})
+
 // REST: получить список чатов пользователя
 app.get('/api/chats', (req, res) => {
   const token = req.headers.authorization?.split(' ')[1]
@@ -233,7 +243,8 @@ app.get('/api/chats', (req, res) => {
         return {
           ...chat,
           avatar: otherMember.avatar,
-          name: otherMember.display_name || chat.name
+          name: otherMember.display_name || chat.name,
+          otherUserId: otherMember.id
         }
       }
     }
@@ -305,6 +316,21 @@ io.on('connection', (socket) => {
   // Пинг-понг для проверки соединения
   socket.on('ping', (timestamp: number) => {
     socket.emit('pong', timestamp)
+  })
+
+  // Пометить сообщения как прочитанные
+  socket.on('messages:read', ({ chatId }: { chatId: string }) => {
+    // Помечаем все сообщения в чате как прочитанные для текущего пользователя
+    db.prepare(`
+      UPDATE messages 
+      SET read = 1 
+      WHERE chat_id = ? AND sender_id != ? AND read = 0
+    `).run(chatId, user.id)
+    
+    console.log('Messages marked as read:', { chatId, userId: user.id })
+    
+    // Уведомляем отправителей что сообщения прочитаны
+    io.to(chatId).emit('messages:read', { chatId, userId: user.id })
   })
 
   // Отправка сообщения

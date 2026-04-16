@@ -42,15 +42,36 @@ export default function ChatWindow({ chatId, chatName, isOnline, onMessageSent, 
             createdAt: new Date(msg.createdAt),
             read: msg.read || false
           }])
+          
+          // Автоматически помечаем как прочитанное если чат открыт
+          setTimeout(() => {
+            socket.emit('messages:read', { chatId })
+          }, 500)
+        }
+      }
+      
+      const handleMessagesRead = ({ chatId: readChatId, userId: readUserId }: any) => {
+        console.log('Messages read:', { readChatId, readUserId, currentChatId: chatId, currentUserId: userId })
+        if (readChatId === chatId && readUserId !== userId) {
+          // Помечаем наши сообщения как прочитанные
+          setMessages(prev => prev.map(msg => 
+            msg.senderId === userId ? { ...msg, read: true } : msg
+          ))
         }
       }
       
       socket.on('message:new', handleNewMessage)
+      socket.on('messages:read', handleMessagesRead)
+      
+      // Помечаем сообщения как прочитанные при открытии чата
+      socket.emit('messages:read', { chatId })
+      
       return () => {
         socket.off('message:new', handleNewMessage)
+        socket.off('messages:read', handleMessagesRead)
       }
     }
-  }, [chatId])
+  }, [chatId, userId])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })

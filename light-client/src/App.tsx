@@ -20,6 +20,7 @@ export default function App() {
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null)
   const [chats, setChats] = useState<any[]>([])
   const [isValidating, setIsValidating] = useState(true)
+  const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     const validateToken = async () => {
@@ -120,6 +121,28 @@ export default function App() {
             }
             return chat
           }))
+        })
+        
+        // Отслеживаем онлайн статус
+        socket.on('user:online', ({ userId }: { userId: string }) => {
+          console.log('User online:', userId)
+          setOnlineUsers(prev => new Set(prev).add(userId))
+        })
+        
+        socket.on('user:offline', ({ userId }: { userId: string }) => {
+          console.log('User offline:', userId)
+          setOnlineUsers(prev => {
+            const newSet = new Set(prev)
+            newSet.delete(userId)
+            return newSet
+          })
+        })
+        
+        // Обновляем счетчик непрочитанных при прочтении
+        socket.on('messages:read', ({ chatId }: { chatId: string }) => {
+          setChats(prev => prev.map(chat => 
+            chat.id === chatId ? { ...chat, unread: 0 } : chat
+          ))
         })
       }
     }
@@ -225,13 +248,14 @@ export default function App() {
             onChatCreated={handleChatCreated}
             onChatDeleted={handleChatDeleted}
             token={token}
+            onlineUsers={onlineUsers}
           />
           <main className="main">
             {selectedChatId ? (
               <ChatWindow
                 chatId={selectedChatId}
                 chatName={chats.find(c => c.id === selectedChatId)?.name || 'Чат'}
-                isOnline={false}
+                isOnline={onlineUsers.has(chats.find(c => c.id === selectedChatId)?.otherUserId || '')}
                 onMessageSent={() => {}}
                 currentUserId={user.id}
                 token={token}
