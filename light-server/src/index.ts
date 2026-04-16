@@ -199,14 +199,34 @@ app.post('/api/chats/direct', (req, res) => {
   })
 })
 
-// REST: получить онлайн пользователей
+// REST: получить онлайн пользователей с lastSeen
 app.get('/api/users/online', (req, res) => {
   const token = req.headers.authorization?.split(' ')[1]
   const user = token ? verifyToken(token) : null
   if (!user) return res.status(401).json({ error: 'Unauthorized' })
 
-  const onlineUserIds = Array.from(onlineUsers.keys())
-  return res.json({ online: onlineUserIds })
+  const now = Date.now()
+  const usersStatus: Record<string, { status: string; lastSeen: number }> = {}
+  
+  onlineUsers.forEach((userData, userId) => {
+    const timeSinceLastSeen = now - userData.lastSeen
+    let status = 'offline'
+    
+    if (timeSinceLastSeen < 10000) {
+      // Активен в последние 10 секунд
+      status = 'online'
+    } else if (timeSinceLastSeen < 300000) {
+      // Был активен в последние 5 минут
+      status = 'recently'
+    }
+    
+    usersStatus[userId] = {
+      status,
+      lastSeen: userData.lastSeen
+    }
+  })
+  
+  return res.json(usersStatus)
 })
 
 // REST: получить список чатов пользователя
@@ -290,8 +310,8 @@ const io = new Server(httpServer, {
   cors: { origin: '*' }
 })
 
-// Онлайн пользователи: userId -> socketId
-const onlineUsers = new Map<string, string>()
+// Онлайн пользователи: userId -> { socketId, lastSeen }
+const onlineUsers = new Map<string, { socketId: string; lastSeen: number }>()
 
 io.use((socket, next) => {
   const token = socket.handshake.auth.token
@@ -303,8 +323,9 @@ io.use((socket, next) => {
 
 io.on('connection', (socket) => {
   const user = socket.data.user
-  onlineUsers.set(user.id, socket.id)
-  io.emit('user:online', { userId: user.id })
+  const now = Date.now()
+  onlineUsers.set(user.id, { socketId: socket.id, lastSeen: now })
+  io.emit('user:online', { userId: user.id, lastSeen: now })
   console.log('User connected:', user.username, socket.id)
 
   // Присоединяемся ко всем чатам пользователя
@@ -313,8 +334,14 @@ io.on('connection', (socket) => {
   `).all(user.id) as { chat_id: string }[]
   chats.forEach(c => socket.join(c.chat_id))
 
-  // Пинг-понг для проверки соединения
+  // Пинг-понг для проверки соединения и обновления lastSeen
   socket.on('ping', (timestamp: number) => {
+    const now = Date.now()
+    const userData = onlineUsers.get(user.id)
+    if (userData) {
+      userData.lastSeen = now
+      onlineUsers.set(user.id, userData)
+    }
     socket.emit('pong', timestamp)
   })
 
@@ -366,8 +393,13 @@ io.on('connection', (socket) => {
   })
 
   socket.on('disconnect', () => {
-    onlineUsers.delete(user.id)
-    io.emit('user:offline', { userId: user.id })
+    const now = Date.now()
+    const userData = onlineUsers.get(user.id)
+    if (userData) {
+      userData.lastSeen = now
+      onlineUsers.set(user.id, userData)
+    }
+    io.emit('user:offline', { userId: user.id, lastSeen: now })
     console.log('User disconnected:', user.username)
   })
 })

@@ -6,6 +6,7 @@ interface ChatWindowProps {
   chatId: string
   chatName: string
   isOnline: boolean
+  userStatus?: { status: string; lastSeen: number }
   onMessageSent?: () => void
   currentUserId: string
   token: string
@@ -15,7 +16,7 @@ function formatTime(date: Date): string {
   return date.toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' })
 }
 
-export default function ChatWindow({ chatId, chatName, isOnline, onMessageSent, currentUserId, token }: ChatWindowProps) {
+export default function ChatWindow({ chatId, chatName, isOnline, userStatus, onMessageSent, currentUserId, token }: ChatWindowProps) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(true)
@@ -23,6 +24,14 @@ export default function ChatWindow({ chatId, chatName, isOnline, onMessageSent, 
   const userId = currentUserId
 
   console.log('ChatWindow userId:', userId)
+  
+  const getStatusText = () => {
+    if (!userStatus) return 'не в сети'
+    
+    if (userStatus.status === 'online') return 'в сети'
+    if (userStatus.status === 'recently') return 'был(а) недавно'
+    return 'не в сети'
+  }
 
   useEffect(() => {
     loadMessages()
@@ -148,7 +157,7 @@ export default function ChatWindow({ chatId, chatName, isOnline, onMessageSent, 
         <div className="chat-header-info">
           <span className="chat-header-name">{chatName}</span>
           <span className={`chat-header-status ${isOnline ? 'online' : ''}`}>
-            {isOnline ? 'в сети' : 'не в сети'}
+            {getStatusText()}
           </span>
         </div>
       </div>

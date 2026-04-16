@@ -20,7 +20,7 @@ export default function App() {
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null)
   const [chats, setChats] = useState<any[]>([])
   const [isValidating, setIsValidating] = useState(true)
-  const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set())
+  const [userStatuses, setUserStatuses] = useState<Record<string, { status: string; lastSeen: number }>>({})
 
   useEffect(() => {
     const validateToken = async () => {
@@ -124,18 +124,20 @@ export default function App() {
         })
         
         // Отслеживаем онлайн статус
-        socket.on('user:online', ({ userId }: { userId: string }) => {
+        socket.on('user:online', ({ userId, lastSeen }: { userId: string; lastSeen: number }) => {
           console.log('User online:', userId)
-          setOnlineUsers(prev => new Set(prev).add(userId))
+          setUserStatuses(prev => ({
+            ...prev,
+            [userId]: { status: 'online', lastSeen }
+          }))
         })
         
-        socket.on('user:offline', ({ userId }: { userId: string }) => {
+        socket.on('user:offline', ({ userId, lastSeen }: { userId: string; lastSeen: number }) => {
           console.log('User offline:', userId)
-          setOnlineUsers(prev => {
-            const newSet = new Set(prev)
-            newSet.delete(userId)
-            return newSet
-          })
+          setUserStatuses(prev => ({
+            ...prev,
+            [userId]: { status: 'recently', lastSeen }
+          }))
         })
         
         // Обновляем счетчик непрочитанных при прочтении
@@ -145,6 +147,25 @@ export default function App() {
           ))
         })
       }
+      
+      // Обновляем статусы каждые 5 секунд
+      const statusInterval = setInterval(() => {
+        const now = Date.now()
+        setUserStatuses(prev => {
+          const updated = { ...prev }
+          Object.keys(updated).forEach(userId => {
+            const timeSince = now - updated[userId].lastSeen
+            if (timeSince > 10000 && timeSince < 300000) {
+              updated[userId].status = 'recently'
+            } else if (timeSince >= 300000) {
+              updated[userId].status = 'offline'
+            }
+          })
+          return updated
+        })
+      }, 5000)
+      
+      return () => clearInterval(statusInterval)
     }
   }, [token])
 
@@ -248,14 +269,15 @@ export default function App() {
             onChatCreated={handleChatCreated}
             onChatDeleted={handleChatDeleted}
             token={token}
-            onlineUsers={onlineUsers}
+            userStatuses={userStatuses}
           />
           <main className="main">
             {selectedChatId ? (
               <ChatWindow
                 chatId={selectedChatId}
                 chatName={chats.find(c => c.id === selectedChatId)?.name || 'Чат'}
-                isOnline={onlineUsers.has(chats.find(c => c.id === selectedChatId)?.otherUserId || '')}
+                isOnline={userStatuses[chats.find(c => c.id === selectedChatId)?.otherUserId || '']?.status === 'online'}
+                userStatus={userStatuses[chats.find(c => c.id === selectedChatId)?.otherUserId || '']}
                 onMessageSent={() => {}}
                 currentUserId={user.id}
                 token={token}

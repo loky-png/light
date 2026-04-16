@@ -124,14 +124,15 @@
 
 .online-dot {
   position: absolute;
-  bottom: 2px;
-  right: 2px;
-  width: 11px;
-  height: 11px;
+  bottom: 0;
+  right: 0;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
   background: var(--online);
-  border: 2px solid var(--glass-bg);
-  box-shadow: 0 0 6px var(--online);
+  border: 2.5px solid var(--glass-bg-strong);
+  box-shadow: 0 0 8px var(--online);
+  z-index: 1;
 }
 
 .chat-info {

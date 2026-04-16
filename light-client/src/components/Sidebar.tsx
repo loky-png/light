@@ -12,10 +12,10 @@ interface SidebarProps {
   onChatCreated: (chat: any) => void
   onChatDeleted: (chatId: string) => void
   token: string
-  onlineUsers: Set<string>
+  userStatuses: Record<string, { status: string; lastSeen: number }>
 }
 
-export default function Sidebar({ selectedChatId, onSelectChat, currentUser, onLogout, onUpdateProfile, chats, onChatCreated, onChatDeleted, token, onlineUsers }: SidebarProps) {
+export default function Sidebar({ selectedChatId, onSelectChat, currentUser, onLogout, onUpdateProfile, chats, onChatCreated, onChatDeleted, token, userStatuses }: SidebarProps) {
   const [search, setSearch] = useState('')
   const [showSettings, setShowSettings] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
@@ -261,7 +261,7 @@ export default function Sidebar({ selectedChatId, onSelectChat, currentUser, onL
               ) : (
                 chat.name?.split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2) || 'CH'
               )}
-              {chat.otherUserId && onlineUsers.has(chat.otherUserId) && <div className="online-dot" />}
+              {chat.otherUserId && userStatuses[chat.otherUserId]?.status === 'online' && <div className="online-dot" />}
             </div>
             <div className="chat-info">
               <div className="chat-top">
