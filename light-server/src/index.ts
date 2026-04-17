@@ -116,6 +116,11 @@ app.get('/api/users/search', (req, res) => {
   if (!query || query.length < 2) {
     return res.json([])
   }
+  
+  // Защита от слишком длинных запросов
+  if (query.length > 50) {
+    return res.status(400).json({ error: 'Query too long' })
+  }
 
   const users = db.prepare(`
     SELECT id, username, display_name, avatar
@@ -140,28 +145,35 @@ app.delete('/api/chats/:chatId', (req, res) => {
     const member = db.prepare('SELECT * FROM chat_members WHERE chat_id = ? AND user_id = ?').get(chatId, user.id)
     if (!member) return res.status(403).json({ error: 'Not a member' })
 
-    // Получаем все ID сообщений чата для удаления
-    const messageIds = db.prepare('SELECT id FROM messages WHERE chat_id = ?').all(chatId) as { id: string }[]
-    
-    // Удаляем только сообщения и связи, но НЕ сам чат
-    // Это позволит переиспользовать чат при повторном обращении
-    db.prepare('DELETE FROM messages WHERE chat_id = ?').run(chatId)
-    
-    // Удаляем скрытые сообщения
-    if (messageIds.length > 0) {
-      const placeholders = messageIds.map(() => '?').join(',')
-      db.prepare(`DELETE FROM hidden_messages WHERE message_id IN (${placeholders})`).run(...messageIds.map(m => m.id))
-    }
-    
-    // Удаляем чат из списка только для текущего пользователя
-    // Для этого удаляем его членство
-    db.prepare('DELETE FROM chat_members WHERE chat_id = ? AND user_id = ?').run(chatId, user.id)
-    
-    // Если больше нет участников, удаляем сам чат
-    const remainingMembers = db.prepare('SELECT COUNT(*) as count FROM chat_members WHERE chat_id = ?').get(chatId) as { count: number }
-    if (remainingMembers.count === 0) {
-      db.prepare('DELETE FROM chats WHERE id = ?').run(chatId)
-    }
+    // Используем транзакцию для атомарности
+    const deleteChat = db.transaction(() => {
+      // Получаем ID старых сообщений
+      const messageIds = db.prepare('SELECT id FROM messages WHERE chat_id = ?').all(chatId) as { id: string }[]
+      
+      // Удаляем только сообщения и связи, но НЕ сам чат
+      db.prepare('DELETE FROM messages WHERE chat_id = ?').run(chatId)
+      
+      // Удаляем скрытые сообщения пакетами
+      if (messageIds.length > 0) {
+        const batchSize = 500
+        for (let i = 0; i < messageIds.length; i += batchSize) {
+          const batch = messageIds.slice(i, i + batchSize)
+          const placeholders = batch.map(() => '?').join(',')
+          db.prepare(`DELETE FROM hidden_messages WHERE message_id IN (${placeholders})`).run(...batch.map(m => m.id))
+        }
+      }
+      
+      // Удаляем чат из списка только для текущего пользователя
+      db.prepare('DELETE FROM chat_members WHERE chat_id = ? AND user_id = ?').run(chatId, user.id)
+      
+      // Если больше нет участников, удаляем сам чат
+      const remainingMembers = db.prepare('SELECT COUNT(*) as count FROM chat_members WHERE chat_id = ?').get(chatId) as { count: number }
+      if (remainingMembers.count === 0) {
+        db.prepare('DELETE FROM chats WHERE id = ?').run(chatId)
+      }
+    })
+
+    deleteChat()
 
     return res.json({ success: true })
   } catch (err: any) {
@@ -194,54 +206,48 @@ app.post('/api/chats/direct', (req, res) => {
     return res.status(404).json({ error: 'User not found' })
   }
 
-  // Проверяем существует ли уже чат между ЭТИМИ ДВУМЯ пользователями
-  const existingChat = db.prepare(`
-    SELECT c.id, c.name, c.type
-    FROM chats c
-    WHERE c.type = 'direct'
-    AND EXISTS (
-      SELECT 1 FROM chat_members cm1 
-      WHERE cm1.chat_id = c.id AND cm1.user_id = ?
-    )
-    AND EXISTS (
-      SELECT 1 FROM chat_members cm2 
-      WHERE cm2.chat_id = c.id AND cm2.user_id = ?
-    )
-    AND (
-      SELECT COUNT(*) FROM chat_members cm 
-      WHERE cm.chat_id = c.id
-    ) = 2
-    LIMIT 1
-  `).get(user.id, userId) as any
+  // Используем транзакцию для предотвращения race condition
+  const createOrGetChat = db.transaction(() => {
+    // Проверяем существует ли уже чат между ЭТИМИ ДВУМЯ пользователями
+    const existingChat = db.prepare(`
+      SELECT c.id, c.name, c.type
+      FROM chats c
+      WHERE c.type = 'direct'
+      AND EXISTS (
+        SELECT 1 FROM chat_members cm1 
+        WHERE cm1.chat_id = c.id AND cm1.user_id = ?
+      )
+      AND EXISTS (
+        SELECT 1 FROM chat_members cm2 
+        WHERE cm2.chat_id = c.id AND cm2.user_id = ?
+      )
+      AND (
+        SELECT COUNT(*) FROM chat_members cm 
+        WHERE cm.chat_id = c.id
+      ) = 2
+      LIMIT 1
+    `).get(user.id, userId) as any
 
-  if (existingChat) {
-    console.log('Chat already exists between users:', existingChat.id)
+    if (existingChat) {
+      console.log('Chat already exists between users:', existingChat.id)
+      return { existing: true, chatId: existingChat.id }
+    }
+
+    // Создаем новый чат
+    const chatId = randomUUID()
     
-    // Возвращаем существующий чат с полными данными
-    return res.json({ 
-      chat: {
-        id: existingChat.id,
-        type: existingChat.type,
-        name: targetUser.display_name,
-        avatar: targetUser.avatar,
-        last_message: null,
-        last_message_time: null,
-        unread: 0,
-        otherUserId: userId
-      }
-    })
-  }
+    db.prepare('INSERT INTO chats (id, type, name) VALUES (?, ?, ?)').run(chatId, 'direct', targetUser.display_name)
+    db.prepare('INSERT INTO chat_members (chat_id, user_id) VALUES (?, ?), (?, ?)').run(chatId, user.id, chatId, userId)
 
-  // Создаем новый чат
-  const chatId = randomUUID()
-  
-  db.prepare('INSERT INTO chats (id, type, name) VALUES (?, ?, ?)').run(chatId, 'direct', targetUser.display_name)
-  db.prepare('INSERT INTO chat_members (chat_id, user_id) VALUES (?, ?), (?, ?)').run(chatId, user.id, chatId, userId)
+    console.log('Chat created:', chatId)
+    return { existing: false, chatId }
+  })
 
-  console.log('Chat created:', chatId)
+  const result = createOrGetChat()
   
+  // Возвращаем чат с полными данными
   const newChat = { 
-    id: chatId, 
+    id: result.chatId, 
     type: 'direct', 
     name: targetUser.display_name,
     avatar: targetUser.avatar,
@@ -251,30 +257,32 @@ app.post('/api/chats/direct', (req, res) => {
     otherUserId: userId
   }
   
-  // Уведомляем ОБОИХ пользователей о новом чате через socket
-  const currentUserSocket = onlineUsers.get(user.id)
-  const targetUserSocket = onlineUsers.get(userId)
-  
-  if (currentUserSocket) {
-    const socket = io.sockets.sockets.get(currentUserSocket.socketId)
-    if (socket) {
-      socket.join(chatId)
-      socket.emit('chat:created', newChat)
+  // Если чат новый, уведомляем ОБОИХ пользователей через socket
+  if (!result.existing) {
+    const currentUserSocket = onlineUsers.get(user.id)
+    const targetUserSocket = onlineUsers.get(userId)
+    
+    if (currentUserSocket) {
+      const socket = io.sockets.sockets.get(currentUserSocket.socketId)
+      if (socket) {
+        socket.join(result.chatId)
+        socket.emit('chat:created', newChat)
+      }
     }
-  }
-  
-  if (targetUserSocket) {
-    const socket = io.sockets.sockets.get(targetUserSocket.socketId)
-    if (socket) {
-      socket.join(chatId)
-      // Для второго пользователя имя чата - это имя создателя
-      const creator = db.prepare('SELECT display_name, avatar FROM users WHERE id = ?').get(user.id) as any
-      socket.emit('chat:created', {
-        ...newChat,
-        name: creator.display_name,
-        avatar: creator.avatar,
-        otherUserId: user.id
-      })
+    
+    if (targetUserSocket) {
+      const socket = io.sockets.sockets.get(targetUserSocket.socketId)
+      if (socket) {
+        socket.join(result.chatId)
+        // Для второго пользователя имя чата - это имя создателя
+        const creator = db.prepare('SELECT display_name, avatar FROM users WHERE id = ?').get(user.id) as any
+        socket.emit('chat:created', {
+          ...newChat,
+          name: creator.display_name,
+          avatar: creator.avatar,
+          otherUserId: user.id
+        })
+      }
     }
   }
   
@@ -426,13 +434,23 @@ function cleanupOldMessages() {
     const oldMessages = db.prepare('SELECT id FROM messages WHERE created_at < ?').all(sevenDaysAgo) as { id: string }[]
     
     if (oldMessages.length > 0) {
-      // Удаляем скрытые сообщения
-      const placeholders = oldMessages.map(() => '?').join(',')
-      db.prepare(`DELETE FROM hidden_messages WHERE message_id IN (${placeholders})`).run(...oldMessages.map(m => m.id))
+      // Используем транзакцию для атомарности
+      const cleanup = db.transaction(() => {
+        // Удаляем скрытые сообщения пакетами по 500
+        const batchSize = 500
+        for (let i = 0; i < oldMessages.length; i += batchSize) {
+          const batch = oldMessages.slice(i, i + batchSize)
+          const placeholders = batch.map(() => '?').join(',')
+          db.prepare(`DELETE FROM hidden_messages WHERE message_id IN (${placeholders})`).run(...batch.map(m => m.id))
+        }
+        
+        // Удаляем сами сообщения
+        const result = db.prepare('DELETE FROM messages WHERE created_at < ?').run(sevenDaysAgo)
+        return result.changes
+      })
       
-      // Удаляем сами сообщения
-      const result = db.prepare('DELETE FROM messages WHERE created_at < ?').run(sevenDaysAgo)
-      console.log(`Deleted ${result.changes} messages older than 7 days`)
+      const deletedCount = cleanup()
+      console.log(`Deleted ${deletedCount} messages older than 7 days`)
     }
   } catch (err) {
     console.error('Cleanup error:', err)
@@ -543,7 +561,9 @@ io.on('connection', (socket) => {
         }
       }
       
-      console.log('Broadcasting message:', msg)
+      console.log('Broadcasting message to chat room:', chatId, 'message:', msg)
+      // КРИТИЧНО: отправляем сообщение ТОЛЬКО в комнату этого чата
+      // Socket.IO автоматически отправит только тем, кто в этой комнате
       io.to(chatId).emit('message:new', msg)
     } catch (err) {
       console.error('Message send error:', err)
@@ -562,10 +582,10 @@ io.on('connection', (socket) => {
         return
       }
       
-      // Проверяем что сообщение существует
-      const message = db.prepare('SELECT * FROM messages WHERE id = ?').get(messageId) as any
+      // Проверяем что сообщение существует И принадлежит этому чату
+      const message = db.prepare('SELECT * FROM messages WHERE id = ? AND chat_id = ?').get(messageId, chatId) as any
       if (!message) {
-        console.error('Message not found:', messageId)
+        console.error('Message not found in this chat:', messageId, chatId)
         socket.emit('error', { message: 'Message not found' })
         return
       }
@@ -605,6 +625,15 @@ io.on('connection', (socket) => {
     if (userData) {
       userData.lastSeen = now
       onlineUsers.set(user.id, userData)
+      
+      // Удаляем из Map через 5 минут если не переподключился
+      setTimeout(() => {
+        const currentData = onlineUsers.get(user.id)
+        if (currentData && currentData.lastSeen === now) {
+          onlineUsers.delete(user.id)
+          console.log('Removed user from online map:', user.username)
+        }
+      }, 5 * 60 * 1000)
     }
     io.emit('user:offline', { userId: user.id, lastSeen: now })
     console.log('User disconnected:', user.username)

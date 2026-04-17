@@ -47,7 +47,9 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_messages_chat_id ON messages(chat_id);
   CREATE INDEX IF NOT EXISTS idx_messages_sender_id ON messages(sender_id);
   CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at);
+  CREATE INDEX IF NOT EXISTS idx_messages_chat_created ON messages(chat_id, created_at);
   CREATE INDEX IF NOT EXISTS idx_chat_members_user_id ON chat_members(user_id);
+  CREATE INDEX IF NOT EXISTS idx_chat_members_chat_id ON chat_members(chat_id);
   CREATE INDEX IF NOT EXISTS idx_hidden_messages_user_id ON hidden_messages(user_id);
   CREATE INDEX IF NOT EXISTS idx_hidden_messages_message_id ON hidden_messages(message_id);
 `)

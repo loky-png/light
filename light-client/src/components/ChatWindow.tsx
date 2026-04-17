@@ -120,15 +120,9 @@ export default function ChatWindow({ chatId, chatName, isOnline, userStatus, onM
       })
     }
     
-    // ВАЖНО: создаем уникальные обработчики для ЭТОГО чата
-    // (переменные для отладки, не используются в коде)
+    // ВАЖНО: НЕ удаляем все обработчики, только для этого чата
+    // Создаем уникальные обработчики с привязкой к chatId
     
-    // Удаляем ВСЕ старые обработчики
-    socket.removeAllListeners('message:new')
-    socket.removeAllListeners('messages:read')
-    socket.removeAllListeners('message:deleted')
-    
-    // Добавляем новые обработчики
     socket.on('message:new', handleNewMessage)
     socket.on('messages:read', handleMessagesRead)
     socket.on('message:deleted', handleMessageDeleted)
@@ -142,7 +136,7 @@ export default function ChatWindow({ chatId, chatName, isOnline, userStatus, onM
     
     return () => {
       console.log('[ChatWindow] Unsubscribing from chat:', chatId)
-      // Отписываемся при размонтировании или смене чата
+      // Отписываемся ТОЛЬКО от обработчиков этого чата
       socket.off('message:new', handleNewMessage)
       socket.off('messages:read', handleMessagesRead)
       socket.off('message:deleted', handleMessageDeleted)
