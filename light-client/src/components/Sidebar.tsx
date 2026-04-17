@@ -37,6 +37,9 @@ export default function Sidebar({
   token,
   userStatuses
 }: SidebarProps) {
+  console.log('[Sidebar] userStatuses:', userStatuses)
+  console.log('[Sidebar] chats:', chats.map(c => ({ id: c.id, name: c.name, otherUserId: c.otherUserId })))
+  
   const [search, setSearch] = useState('')
   const [showSettings, setShowSettings] = useState(false)
   const [isEditing, setIsEditing] = useState(false)

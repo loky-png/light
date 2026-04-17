@@ -161,17 +161,27 @@ export default function App() {
     }
 
     const handleUserOnline = ({ userId, lastSeen }: { userId: string; lastSeen: number }) => {
-      setUserStatuses((previous) => ({
-        ...previous,
-        [userId]: { status: 'online', lastSeen }
-      }))
+      console.log('[App] User online:', userId, lastSeen)
+      setUserStatuses((previous) => {
+        const updated = {
+          ...previous,
+          [userId]: { status: 'online' as const, lastSeen }
+        }
+        console.log('[App] Updated userStatuses:', updated)
+        return updated
+      })
     }
 
     const handleUserOffline = ({ userId, lastSeen }: { userId: string; lastSeen: number }) => {
-      setUserStatuses((previous) => ({
-        ...previous,
-        [userId]: { status: 'recently', lastSeen }
-      }))
+      console.log('[App] User offline:', userId, lastSeen)
+      setUserStatuses((previous) => {
+        const updated = {
+          ...previous,
+          [userId]: { status: 'recently' as const, lastSeen }
+        }
+        console.log('[App] Updated userStatuses:', updated)
+        return updated
+      })
     }
 
     const handleMessagesRead = ({ chatId, userId }: { chatId: string; userId: string }) => {
@@ -209,6 +219,11 @@ export default function App() {
         const updated: Record<string, UserStatus> = { ...previous }
 
         for (const [userId, status] of Object.entries(updated)) {
+          // Пропускаем пользователей которые онлайн - их статус обновляется через события
+          if (status.status === 'online') {
+            continue
+          }
+
           const elapsed = now - status.lastSeen
 
           if (elapsed > 10_000 && elapsed < 300_000) {
