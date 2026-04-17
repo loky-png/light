@@ -62,6 +62,14 @@ try {
   // Колонка уже существует
 }
 
+// Добавляем колонку last_seen если её нет
+try {
+  db.prepare('ALTER TABLE users ADD COLUMN last_seen INTEGER DEFAULT 0').run()
+  console.log('Added last_seen column to users table')
+} catch (e) {
+  // Колонка уже существует
+}
+
 // Добавляем колонку reply_to если её нет
 try {
   db.prepare('ALTER TABLE messages ADD COLUMN reply_to TEXT').run()

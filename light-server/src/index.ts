@@ -319,6 +319,82 @@ app.get('/api/users/online', (req, res) => {
   return res.json(usersStatus)
 })
 
+// REST: синхронизация - получить все данные одним запросом (оптимизация)
+app.get('/api/sync', (req, res) => {
+  const token = req.headers.authorization?.split(' ')[1]
+  const user = token ? verifyToken(token) : null
+  if (!user) return res.status(401).json({ error: 'Unauthorized' })
+
+  // Получаем чаты с информацией о собеседнике
+  const chats = db.prepare(`
+    SELECT c.id, c.name, c.type,
+      (SELECT text FROM messages WHERE chat_id = c.id ORDER BY created_at DESC LIMIT 1) as last_message,
+      (SELECT created_at FROM messages WHERE chat_id = c.id ORDER BY created_at DESC LIMIT 1) as last_message_time,
+      (SELECT COUNT(*) FROM messages WHERE chat_id = c.id AND read = 0 AND sender_id != ?) as unread
+    FROM chats c
+    JOIN chat_members cm ON cm.chat_id = c.id
+    WHERE cm.user_id = ?
+    ORDER BY last_message_time DESC
+  `).all(user.id, user.id) as any[]
+
+  // Для direct чатов добавляем информацию о собеседнике
+  const enrichedChats = chats.map(chat => {
+    if (chat.type === 'direct') {
+      const otherMember = db.prepare(`
+        SELECT u.id, u.avatar, u.display_name
+        FROM chat_members cm
+        JOIN users u ON u.id = cm.user_id
+        WHERE cm.chat_id = ? AND cm.user_id != ?
+        LIMIT 1
+      `).get(chat.id, user.id) as any
+      
+      if (otherMember) {
+        return {
+          ...chat,
+          avatar: otherMember.avatar,
+          name: otherMember.display_name || chat.name,
+          otherUserId: otherMember.id
+        }
+      }
+    }
+    return chat
+  })
+
+  // Получаем ID всех собеседников
+  const otherUserIds = enrichedChats
+    .filter(c => c.otherUserId)
+    .map(c => c.otherUserId)
+
+  // Получаем статусы всех собеседников
+  const userStatuses: Record<string, { status: string; lastSeen: number }> = {}
+  otherUserIds.forEach(userId => {
+    const onlineUser = onlineUsers.get(userId)
+    if (onlineUser) {
+      userStatuses[userId] = {
+        status: 'online',
+        lastSeen: Date.now()
+      }
+    } else {
+      // Получаем last_seen из БД
+      const userData = db.prepare('SELECT last_seen FROM users WHERE id = ?').get(userId) as any
+      const lastSeen = userData?.last_seen || 0
+      const timeSince = Date.now() - lastSeen
+      
+      userStatuses[userId] = {
+        status: timeSince < 300000 ? 'recently' : 'offline',
+        lastSeen
+      }
+    }
+  })
+
+  // Возвращаем все данные одним пакетом
+  return res.json({
+    chats: enrichedChats,
+    userStatuses,
+    timestamp: Date.now()
+  })
+})
+
 // REST: получить список чатов пользователя
 app.get('/api/chats', (req, res) => {
   const token = req.headers.authorization?.split(' ')[1]

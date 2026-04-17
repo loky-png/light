@@ -71,13 +71,16 @@ export default function App() {
       const tkn = authToken || token
       if (!tkn) return
       
-      const result = await lightAPI.fetch('http://155.212.167.68:80/api/chats', {
+      // Используем новый /api/sync endpoint - получаем все данные одним запросом
+      const result = await lightAPI.fetch('http://155.212.167.68:80/api/sync', {
         headers: { 'Authorization': `Bearer ${tkn}` }
       })
       
       if (result.ok) {
-        const chatList = JSON.parse(result.text)
-        setChats(chatList)
+        const data = JSON.parse(result.text)
+        console.log('[App] Synced data:', data)
+        setChats(data.chats)
+        setUserStatuses(data.userStatuses)
       }
     } catch (err) {
       console.error('Load chats error:', err)
