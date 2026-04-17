@@ -119,20 +119,36 @@
   box-shadow: 0 4px 12px var(--shadow);
   background-position: center;
   background-repeat: no-repeat;
-  overflow: hidden;
+  background-size: cover;
+}
+
+.chat-avatar img {
+  border-radius: 50%;
 }
 
 .online-dot {
   position: absolute;
-  bottom: 0;
-  right: 0;
-  width: 12px;
-  height: 12px;
+  bottom: -2px;
+  right: -2px;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
   background: var(--online);
   border: 2.5px solid var(--glass-bg-strong);
   box-shadow: 0 0 8px var(--online);
-  z-index: 1;
+  z-index: 2;
+}
+
+.offline-dot {
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #6c757d;
+  border: 2.5px solid var(--glass-bg-strong);
+  z-index: 2;
 }
 
 .chat-info {
@@ -311,8 +327,11 @@
   box-shadow: 0 4px 12px var(--shadow);
   background-position: center;
   background-repeat: no-repeat;
-  overflow: hidden;
   position: relative;
+}
+
+.settings-avatar img {
+  border-radius: 50%;
 }
 
 .settings-info {
@@ -542,7 +561,10 @@
   font-weight: 600;
   font-size: 16px;
   box-shadow: 0 4px 12px var(--shadow);
-  overflow: hidden;
+}
+
+.search-avatar img {
+  border-radius: 50%;
 }
 
 .search-info {

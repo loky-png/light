@@ -321,6 +321,7 @@ export default function Sidebar({ selectedChatId, onSelectChat, currentUser, onL
                 chat.name?.split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2) || 'CH'
               )}
               {chat.otherUserId && userStatuses[chat.otherUserId]?.status === 'online' && <div className="online-dot" />}
+              {chat.otherUserId && userStatuses[chat.otherUserId]?.status !== 'online' && <div className="offline-dot" />}
             </div>
             <div className="chat-info">
               <div className="chat-top">
