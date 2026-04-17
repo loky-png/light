@@ -34,16 +34,23 @@
   background: var(--glass-bg);
   border: 1px solid var(--glass-border);
   cursor: pointer;
-  font-size: 16px;
   padding: 6px 10px;
   border-radius: 12px;
   transition: all 0.2s ease;
   backdrop-filter: blur(10px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-primary);
 }
 
 .theme-toggle:hover {
   background: var(--glass-hover);
   transform: scale(1.05);
+}
+
+.theme-toggle svg {
+  display: block;
 }
 
 .sidebar-search {
@@ -275,16 +282,23 @@
   background: var(--glass-bg);
   border: 1px solid var(--glass-border);
   cursor: pointer;
-  font-size: 16px;
   padding: 6px 10px;
   border-radius: 12px;
   transition: all 0.2s ease;
   backdrop-filter: blur(10px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-primary);
 }
 
 .settings-btn:hover {
   background: var(--glass-hover);
   transform: scale(1.05);
+}
+
+.settings-btn svg {
+  display: block;
 }
 
 .settings-panel {

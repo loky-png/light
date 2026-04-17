@@ -161,27 +161,17 @@ export default function App() {
     }
 
     const handleUserOnline = ({ userId, lastSeen }: { userId: string; lastSeen: number }) => {
-      console.log('[App] User online:', userId, lastSeen)
-      setUserStatuses((previous) => {
-        const updated = {
-          ...previous,
-          [userId]: { status: 'online' as const, lastSeen }
-        }
-        console.log('[App] Updated userStatuses:', updated)
-        return updated
-      })
+      setUserStatuses((previous) => ({
+        ...previous,
+        [userId]: { status: 'online' as const, lastSeen }
+      }))
     }
 
     const handleUserOffline = ({ userId, lastSeen }: { userId: string; lastSeen: number }) => {
-      console.log('[App] User offline:', userId, lastSeen)
-      setUserStatuses((previous) => {
-        const updated = {
-          ...previous,
-          [userId]: { status: 'recently' as const, lastSeen }
-        }
-        console.log('[App] Updated userStatuses:', updated)
-        return updated
-      })
+      setUserStatuses((previous) => ({
+        ...previous,
+        [userId]: { status: 'recently' as const, lastSeen }
+      }))
     }
 
     const handleMessagesRead = ({ chatId, userId }: { chatId: string; userId: string }) => {
