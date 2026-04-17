@@ -22,6 +22,7 @@ export default function App() {
   const [chats, setChats] = useState<any[]>([])
   const [isValidating, setIsValidating] = useState(true)
   const [userStatuses, setUserStatuses] = useState<Record<string, { status: string; lastSeen: number }>>({})
+  const [messagesCache, setMessagesCache] = useState<Record<string, any[]>>({}) // Кеш сообщений по chatId
 
   useEffect(() => {
     const validateToken = async () => {
@@ -55,9 +56,12 @@ export default function App() {
         }
       } catch (err) {
         console.error('Token validation error:', err)
-        localStorage.removeItem('light-token')
-        setToken(null)
-        setUser(null)
+        // НЕ удаляем токен при ошибке соединения - оставляем пользователя залогиненным
+        // Просто показываем что валидация не удалась
+        if (storedToken) {
+          setToken(storedToken)
+          // Пытаемся загрузить данные из кеша или показать оффлайн режим
+        }
       } finally {
         setIsValidating(false)
       }
@@ -221,36 +225,16 @@ export default function App() {
     setChats([])
   }
 
+  const handleMessagesLoaded = (chatId: string, messages: any[]) => {
+    setMessagesCache(prev => ({
+      ...prev,
+      [chatId]: messages
+    }))
+  }
+
   const handleUpdateProfile = async (displayName: string, username: string, avatar: string | null) => {
-    try {
-      const lightAPI = (window as any).lightAPI
-      if (!lightAPI?.updateProfile) {
-        const error = 'Ошибка: API недоступен'
-        alert(error)
-        throw new Error(error)
-      }
-
-      console.log('Updating profile:', { displayName, username, hasAvatar: !!avatar })
-      const result = await lightAPI.updateProfile(token, { displayName, username, avatar })
-      console.log('Update result:', result)
-      
-      if (!result.ok) {
-        const error = JSON.parse(result.text)
-        alert(error.error || 'Ошибка обновления профиля')
-        throw new Error(error.error || 'Update failed')
-      }
-
-      const data = JSON.parse(result.text)
-      const updatedUser = data.user
-      
-      // Обновляем состояние данными с СЕРВЕРА (не сохраняем в localStorage)
-      setUser(updatedUser)
-      console.log('Profile updated successfully:', updatedUser)
-    } catch (err) {
-      console.error('Profile update error:', err)
-      alert('Ошибка соединения с сервером')
-      throw err
-    }
+    // Обновляем состояние локально
+    setUser({ ...user!, displayName, username, avatar })
   }
 
   if (isValidating) {
@@ -303,6 +287,8 @@ export default function App() {
                   onMessageSent={() => {}}
                   currentUserId={user.id}
                   token={token}
+                  cachedMessages={messagesCache[selectedChatId]}
+                  onMessagesLoaded={handleMessagesLoaded}
                 />
               ) : (
                 <div className="empty-state">

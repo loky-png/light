@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { useToast } from '../context/ToastContext'
 import type { Message } from '../types'
 import './ChatWindow.css'
 
@@ -10,13 +11,15 @@ interface ChatWindowProps {
   onMessageSent?: () => void
   currentUserId: string
   token: string
+  cachedMessages?: any[]
+  onMessagesLoaded?: (chatId: string, messages: any[]) => void
 }
 
 function formatTime(date: Date): string {
   return date.toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' })
 }
 
-export default function ChatWindow({ chatId, chatName, isOnline, userStatus, onMessageSent, currentUserId, token }: ChatWindowProps) {
+export default function ChatWindow({ chatId, chatName, isOnline, userStatus, onMessageSent, currentUserId, token, cachedMessages, onMessagesLoaded }: ChatWindowProps) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(true)
@@ -25,6 +28,7 @@ export default function ChatWindow({ chatId, chatName, isOnline, userStatus, onM
   const bottomRef = useRef<HTMLDivElement>(null)
   const messagesRef = useRef<Record<string, HTMLDivElement>>({})
   const userId = currentUserId
+  const toast = useToast()
 
   console.log('ChatWindow userId:', userId)
   
@@ -37,11 +41,23 @@ export default function ChatWindow({ chatId, chatName, isOnline, userStatus, onM
   }
 
   useEffect(() => {
-    // Очищаем сообщения при смене чата
-    setMessages([])
-    setLoading(true)
-    
-    loadMessages()
+    // Проверяем есть ли кешированные сообщения
+    if (cachedMessages && cachedMessages.length > 0) {
+      console.log('[ChatWindow] Using cached messages:', cachedMessages.length)
+      setMessages(cachedMessages)
+      setLoading(false)
+      
+      // Прокручиваем вниз
+      setTimeout(() => {
+        bottomRef.current?.scrollIntoView({ behavior: 'auto' })
+      }, 0)
+    } else {
+      // Очищаем сообщения при смене чата
+      setMessages([])
+      setLoading(true)
+      
+      loadMessages()
+    }
     
     // Подписываемся на новые сообщения
     const socket = (window as any).socket
@@ -63,7 +79,7 @@ export default function ChatWindow({ chatId, chatName, isOnline, userStatus, onM
           return prev
         }
         console.log('[ChatWindow] Adding message to chat')
-        return [...prev, {
+        const newMessages = [...prev, {
           id: msg.id,
           chatId: msg.chatId,
           senderId: msg.senderId,
@@ -72,6 +88,13 @@ export default function ChatWindow({ chatId, chatName, isOnline, userStatus, onM
           read: msg.read || false,
           replyTo: msg.replyTo
         }]
+        
+        // Обновляем кеш
+        if (onMessagesLoaded) {
+          onMessagesLoaded(chatId, newMessages)
+        }
+        
+        return newMessages
       })
       
       // Автоматически помечаем как прочитанное если чат открыт
@@ -176,11 +199,18 @@ export default function ChatWindow({ chatId, chatName, isOnline, userStatus, onM
         console.log('Mapped messages:', mapped)
         console.log('Current userId:', userId)
         setMessages(mapped)
+        
+        // Сохраняем в кеш
+        if (onMessagesLoaded) {
+          onMessagesLoaded(chatId, mapped)
+        }
       } else {
         console.error('Failed to load messages:', result.status, result.text)
+        toast.error('Не удалось загрузить сообщения')
       }
     } catch (err) {
       console.error('Load messages error:', err)
+      toast.error('Ошибка загрузки сообщений')
     } finally {
       setLoading(false)
     }
@@ -192,7 +222,7 @@ export default function ChatWindow({ chatId, chatName, isOnline, userStatus, onM
     
     // Проверяем лимит символов НА КЛИЕНТЕ
     if (text.length > 1000) {
-      alert('Сообщение слишком длинное. Максимум 1000 символов.')
+      toast.error('Сообщение слишком длинное. Максимум 1000 символов.')
       return
     }
     
@@ -201,7 +231,7 @@ export default function ChatWindow({ chatId, chatName, isOnline, userStatus, onM
       console.log('Sending message, socket:', !!socket, 'connected:', socket?.connected)
       
       if (!socket || !socket.connected) {
-        alert('Нет соединения с сервером. Проверьте интернет.')
+        toast.error('Нет соединения с сервером. Проверьте интернет.')
         return
       }
       
@@ -228,7 +258,7 @@ export default function ChatWindow({ chatId, chatName, isOnline, userStatus, onM
       }
     } catch (err) {
       console.error('Send message error:', err)
-      alert('Ошибка отправки сообщения')
+      toast.error('Ошибка отправки сообщения')
     }
   }
 

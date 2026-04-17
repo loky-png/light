@@ -47,10 +47,30 @@ export default function Sidebar({ selectedChatId, onSelectChat, currentUser, onL
 
   const handleSaveProfile = async () => {
     try {
+      const lightAPI = (window as any).lightAPI
+      if (!lightAPI?.updateProfile) {
+        toast.error('Ошибка: API недоступен')
+        return
+      }
+
+      const result = await lightAPI.updateProfile(token, { 
+        displayName: editName, 
+        username: editUsername, 
+        avatar: avatarUrl 
+      })
+      
+      if (!result.ok) {
+        const error = JSON.parse(result.text)
+        toast.error(error.error || 'Ошибка обновления профиля')
+        return
+      }
+
       await onUpdateProfile(editName, editUsername, avatarUrl)
+      toast.success('Профиль обновлен')
       setIsEditing(false)
     } catch (err) {
       console.error('Save profile error:', err)
+      toast.error('Ошибка соединения с сервером')
     }
   }
 
