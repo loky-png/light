@@ -41,6 +41,8 @@ export default function ChatWindow({ chatId, chatName, isOnline, userStatus, onM
   }
 
   useEffect(() => {
+    console.log('[ChatWindow] Effect triggered for chatId:', chatId, 'cachedMessages:', cachedMessages?.length)
+    
     // Проверяем есть ли кешированные сообщения
     if (cachedMessages && cachedMessages.length > 0) {
       console.log('[ChatWindow] Using cached messages:', cachedMessages.length)
@@ -52,6 +54,7 @@ export default function ChatWindow({ chatId, chatName, isOnline, userStatus, onM
         bottomRef.current?.scrollIntoView({ behavior: 'auto' })
       }, 0)
     } else {
+      console.log('[ChatWindow] No cache, loading from server')
       // Очищаем сообщения при смене чата
       setMessages([])
       setLoading(true)
@@ -164,7 +167,7 @@ export default function ChatWindow({ chatId, chatName, isOnline, userStatus, onM
       socket.off('messages:read', handleMessagesRead)
       socket.off('message:deleted', handleMessageDeleted)
     }
-  }, [chatId, userId])
+  }, [chatId, userId, cachedMessages])
 
   useEffect(() => {
     // Мгновенный скролл вниз без анимации
