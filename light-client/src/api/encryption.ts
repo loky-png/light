@@ -72,7 +72,7 @@ export async function encryptMessage(message: string, recipientPublicKey: string
   // Объединяем все части: зашифрованный AES ключ + IV + зашифрованное сообщение
   const result = {
     key: arrayBufferToBase64(encryptedAesKey),
-    iv: arrayBufferToBase64(iv),
+    iv: arrayBufferToBase64(iv.buffer as ArrayBuffer),
     data: arrayBufferToBase64(encryptedMessage)
   }
 

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useTheme } from '../context/ThemeContext'
+import { useToast } from '../context/ToastContext'
 import './Sidebar.css'
 
 interface SidebarProps {
@@ -27,6 +28,7 @@ export default function Sidebar({ selectedChatId, onSelectChat, currentUser, onL
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
   const [contextMenu, setContextMenu] = useState<{ chatId: string; x: number; y: number } | null>(null)
   const { theme, toggleTheme } = useTheme()
+  const toast = useToast()
 
   const getInitials = (name: string) => {
     return name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
@@ -192,14 +194,14 @@ export default function Sidebar({ selectedChatId, onSelectChat, currentUser, onL
       } else {
         const error = JSON.parse(result.text)
         if (error.error === 'Cannot create chat with yourself') {
-          alert('Нельзя создать чат с самим собой')
+          toast.error('Нельзя создать чат с самим собой')
         } else {
-          alert(error.error || 'Ошибка создания чата')
+          toast.error(error.error || 'Ошибка создания чата')
         }
       }
     } catch (err) {
       console.error('Create chat error:', err)
-      alert('Ошибка соединения с сервером')
+      toast.error('Ошибка соединения с сервером')
     }
   }
 

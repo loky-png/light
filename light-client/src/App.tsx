@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { ThemeProvider } from './context/ThemeContext'
+import { ToastProvider } from './context/ToastContext'
 import TitleBar from './components/TitleBar'
 import Sidebar from './components/Sidebar'
 import ChatWindow from './components/ChatWindow'
@@ -255,9 +256,11 @@ export default function App() {
   if (isValidating) {
     return (
       <ThemeProvider>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: 'var(--bg)' }}>
-          <span style={{ color: 'var(--text-primary)' }}>Загрузка...</span>
-        </div>
+        <ToastProvider>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: 'var(--bg)' }}>
+            <span style={{ color: 'var(--text-primary)' }}>Загрузка...</span>
+          </div>
+        </ToastProvider>
       </ThemeProvider>
     )
   }
@@ -265,48 +268,52 @@ export default function App() {
   if (!token || !user) {
     return (
       <ThemeProvider>
-        <Login onLogin={handleLogin} />
+        <ToastProvider>
+          <Login onLogin={handleLogin} />
+        </ToastProvider>
       </ThemeProvider>
     )
   }
 
   return (
     <ThemeProvider>
-      <div className="app">
-        <TitleBar username={user.displayName} />
-        <div className="app-body">
-          <Sidebar 
-            selectedChatId={selectedChatId} 
-            onSelectChat={setSelectedChatId}
-            currentUser={user}
-            onLogout={handleLogout}
-            onUpdateProfile={handleUpdateProfile}
-            chats={chats}
-            onChatCreated={handleChatCreated}
-            onChatDeleted={handleChatDeleted}
-            token={token}
-            userStatuses={userStatuses}
-          />
-          <main className="main">
-            {selectedChatId ? (
-              <ChatWindow
-                chatId={selectedChatId}
-                chatName={chats.find(c => c.id === selectedChatId)?.name || 'Чат'}
-                isOnline={userStatuses[chats.find(c => c.id === selectedChatId)?.otherUserId || '']?.status === 'online'}
-                userStatus={userStatuses[chats.find(c => c.id === selectedChatId)?.otherUserId || '']}
-                onMessageSent={() => {}}
-                currentUserId={user.id}
-                token={token}
-              />
-            ) : (
-              <div className="empty-state">
-                <span className="empty-icon">☀</span>
-                <p>Выберите чат чтобы начать общение</p>
-              </div>
-            )}
-          </main>
+      <ToastProvider>
+        <div className="app">
+          <TitleBar username={user.displayName} />
+          <div className="app-body">
+            <Sidebar 
+              selectedChatId={selectedChatId} 
+              onSelectChat={setSelectedChatId}
+              currentUser={user}
+              onLogout={handleLogout}
+              onUpdateProfile={handleUpdateProfile}
+              chats={chats}
+              onChatCreated={handleChatCreated}
+              onChatDeleted={handleChatDeleted}
+              token={token}
+              userStatuses={userStatuses}
+            />
+            <main className="main">
+              {selectedChatId ? (
+                <ChatWindow
+                  chatId={selectedChatId}
+                  chatName={chats.find(c => c.id === selectedChatId)?.name || 'Чат'}
+                  isOnline={userStatuses[chats.find(c => c.id === selectedChatId)?.otherUserId || '']?.status === 'online'}
+                  userStatus={userStatuses[chats.find(c => c.id === selectedChatId)?.otherUserId || '']}
+                  onMessageSent={() => {}}
+                  currentUserId={user.id}
+                  token={token}
+                />
+              ) : (
+                <div className="empty-state">
+                  <span className="empty-icon">☀</span>
+                  <p>Выберите чат чтобы начать общение</p>
+                </div>
+              )}
+            </main>
+          </div>
         </div>
-      </div>
+      </ToastProvider>
     </ThemeProvider>
   )
 }
