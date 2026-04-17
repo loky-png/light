@@ -224,12 +224,26 @@
 }
 
 .message.highlight {
-  animation: messageHighlight 1.5s ease;
+  position: relative;
 }
 
-@keyframes messageHighlight {
-  0%, 100% { background: transparent; }
-  50% { background: rgba(82, 136, 193, 0.2); border-radius: 8px; }
+.message.highlight::before {
+  content: '';
+  position: absolute;
+  left: -100vw;
+  right: -100vw;
+  top: 0;
+  bottom: 0;
+  background: rgba(82, 136, 193, 0.15);
+  animation: messageHighlightFade 1.5s ease;
+  pointer-events: none;
+  z-index: -1;
+}
+
+@keyframes messageHighlightFade {
+  0% { opacity: 0; }
+  20% { opacity: 1; }
+  100% { opacity: 0; }
 }
 
 .message-text {
@@ -349,8 +363,10 @@
   padding: 6px;
   backdrop-filter: blur(20px);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
-  z-index: 10000;
-  min-width: 160px;
+  z-index: 99999;
+  min-width: 180px;
+  max-height: 400px;
+  overflow-y: auto;
   animation: contextMenuSlideIn 0.15s ease-out;
 }
 

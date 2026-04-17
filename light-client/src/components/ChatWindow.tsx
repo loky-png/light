@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { useToast } from '../context/ToastContext'
 import type { Message } from '../types'
 import './ChatWindow.css'
@@ -274,15 +275,15 @@ export default function ChatWindow({ chatId, chatName, isOnline, userStatus, onM
     
     // Примерные размеры меню
     const menuWidth = 200
-    const menuHeight = message.senderId === userId ? 200 : 150
+    const menuHeight = message.senderId === userId ? 250 : 150
     
-    // Вычисляем позицию чтобы меню не вылезало за границы
+    // Используем clientX/clientY для fixed позиционирования
     let x = e.clientX
     let y = e.clientY
     
-    // Проверяем правую границу
+    // Проверяем правую границу - показываем слева от курсора
     if (x + menuWidth > windowWidth) {
-      x = windowWidth - menuWidth - 10
+      x = x - menuWidth
     }
     
     // Проверяем нижнюю границу
@@ -415,64 +416,74 @@ export default function ChatWindow({ chatId, chatName, isOnline, userStatus, onM
         <div ref={bottomRef} />
       </div>
 
-      {contextMenu && (
+      {contextMenu && createPortal(
         <div 
           className="message-context-menu" 
           style={{ top: contextMenu.y, left: contextMenu.x }}
           onClick={(e) => e.stopPropagation()}
         >
-          <button className="context-menu-item" onClick={handleReply}>
-            <svg className="context-menu-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="9 14 4 9 9 4"/>
-              <path d="M20 20v-7a4 4 0 0 0-4-4H4"/>
-            </svg>
-            Ответить
-          </button>
-          <button className="context-menu-item" onClick={handleCopyMessage}>
-            <svg className="context-menu-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-            </svg>
-            Копировать
-          </button>
-          {messages.find(m => m.id === contextMenu.messageId)?.senderId === userId && (
-            <>
-              <div className="context-menu-divider" />
-              <button className="context-menu-item delete" onClick={() => handleDeleteMessage(false)}>
-                <svg className="context-menu-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="3 6 5 6 21 6"/>
-                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                  <line x1="10" y1="11" x2="10" y2="17"/>
-                  <line x1="14" y1="11" x2="14" y2="17"/>
-                </svg>
-                Удалить у себя
-              </button>
-              <button className="context-menu-item delete" onClick={() => handleDeleteMessage(true)}>
-                <svg className="context-menu-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="3 6 5 6 21 6"/>
-                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                  <line x1="10" y1="11" x2="10" y2="17"/>
-                  <line x1="14" y1="11" x2="14" y2="17"/>
-                </svg>
-                Удалить у всех
-              </button>
-            </>
-          )}
-          {messages.find(m => m.id === contextMenu.messageId)?.senderId !== userId && (
-            <>
-              <div className="context-menu-divider" />
-              <button className="context-menu-item delete" onClick={() => handleDeleteMessage(false)}>
-                <svg className="context-menu-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="3 6 5 6 21 6"/>
-                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                  <line x1="10" y1="11" x2="10" y2="17"/>
-                  <line x1="14" y1="11" x2="14" y2="17"/>
-                </svg>
-                Удалить сообщение
-              </button>
-            </>
-          )}
-        </div>
+          {(() => {
+            const msg = messages.find(m => m.id === contextMenu.messageId)
+            const isOwnMessage = msg?.senderId === userId
+            
+            return (
+              <>
+                <button className="context-menu-item" onClick={handleReply}>
+                  <svg className="context-menu-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="9 14 4 9 9 4"/>
+                    <path d="M20 20v-7a4 4 0 0 0-4-4H4"/>
+                  </svg>
+                  Ответить
+                </button>
+                <button className="context-menu-item" onClick={handleCopyMessage}>
+                  <svg className="context-menu-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                  </svg>
+                  Копировать
+                </button>
+                {isOwnMessage && (
+                  <>
+                    <div className="context-menu-divider" />
+                    <button className="context-menu-item delete" onClick={() => handleDeleteMessage(false)}>
+                      <svg className="context-menu-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="3 6 5 6 21 6"/>
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                        <line x1="10" y1="11" x2="10" y2="17"/>
+                        <line x1="14" y1="11" x2="14" y2="17"/>
+                      </svg>
+                      Удалить у себя
+                    </button>
+                    <button className="context-menu-item delete" onClick={() => handleDeleteMessage(true)}>
+                      <svg className="context-menu-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="3 6 5 6 21 6"/>
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                        <line x1="10" y1="11" x2="10" y2="17"/>
+                        <line x1="14" y1="11" x2="14" y2="17"/>
+                      </svg>
+                      Удалить у всех
+                    </button>
+                  </>
+                )}
+                {!isOwnMessage && (
+                  <>
+                    <div className="context-menu-divider" />
+                    <button className="context-menu-item delete" onClick={() => handleDeleteMessage(false)}>
+                      <svg className="context-menu-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="3 6 5 6 21 6"/>
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                        <line x1="10" y1="11" x2="10" y2="17"/>
+                        <line x1="14" y1="11" x2="14" y2="17"/>
+                      </svg>
+                      Удалить сообщение
+                    </button>
+                  </>
+                )}
+              </>
+            )
+          })()}
+        </div>,
+        document.body
       )}
 
       <div className="chat-input-area">
