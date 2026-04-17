@@ -1,6 +1,5 @@
 import { io, Socket } from 'socket.io-client'
-
-const SERVER_URL = 'http://155.212.167.68:80'
+import { API_URL } from '../config'
 
 let socket: Socket | null = null
 let pingInterval: NodeJS.Timeout | null = null
@@ -20,7 +19,7 @@ export function connectSocket(token: string): Socket {
   }
 
   console.log('Connecting new socket with token:', token.substring(0, 20) + '...')
-  socket = io(SERVER_URL, {
+  socket = io(API_URL, {
     auth: { token },
     transports: ['websocket'],
     reconnection: true,
@@ -62,6 +61,11 @@ export function connectSocket(token: string): Socket {
     window.dispatchEvent(new CustomEvent('socket:error', { detail: error.message }))
   })
 
+  socket.on('error', (payload) => {
+    const message = typeof payload?.message === 'string' ? payload.message : 'Socket error'
+    window.dispatchEvent(new CustomEvent('socket:error', { detail: message }))
+  })
+
   socket.on('pong', (timestamp: number) => {
     const latency = Date.now() - timestamp
     console.log('🏓 Pong received, latency:', latency + 'ms')
@@ -93,5 +97,3 @@ export function disconnectSocket() {
     ;(window as any).socket = null
   }
 }
-
-export const API_URL = SERVER_URL

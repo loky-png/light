@@ -43,6 +43,13 @@ db.exec(`
     PRIMARY KEY (message_id, user_id)
   );
 
+  CREATE TABLE IF NOT EXISTS hidden_chats (
+    chat_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    hidden_at INTEGER DEFAULT (unixepoch()),
+    PRIMARY KEY (chat_id, user_id)
+  );
+
   -- Индексы для ускорения запросов
   CREATE INDEX IF NOT EXISTS idx_messages_chat_id ON messages(chat_id);
   CREATE INDEX IF NOT EXISTS idx_messages_sender_id ON messages(sender_id);
@@ -52,6 +59,8 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_chat_members_chat_id ON chat_members(chat_id);
   CREATE INDEX IF NOT EXISTS idx_hidden_messages_user_id ON hidden_messages(user_id);
   CREATE INDEX IF NOT EXISTS idx_hidden_messages_message_id ON hidden_messages(message_id);
+  CREATE INDEX IF NOT EXISTS idx_hidden_chats_user_id ON hidden_chats(user_id);
+  CREATE INDEX IF NOT EXISTS idx_hidden_chats_chat_id ON hidden_chats(chat_id);
 `)
 
 // Добавляем колонку avatar если её нет

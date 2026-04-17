@@ -1,4 +1,4 @@
-import express from 'express'
+import express, { Request } from 'express'
 import { createServer } from 'http'
 import { Server } from 'socket.io'
 import cors from 'cors'
@@ -6,36 +6,272 @@ import jwt from 'jsonwebtoken'
 import { randomUUID } from 'crypto'
 import authRouter from './auth'
 import db from './db'
+import { JWT_SECRET, PORT } from './config'
+
+type AuthTokenPayload = { id: string; username: string }
+type PresenceStatus = 'online' | 'recently' | 'offline'
+type UserStatus = { status: PresenceStatus; lastSeen: number }
+type OnlineUserState = { socketIds: Set<string>; lastSeen: number }
+type ChatSummary = {
+  id: string
+  name: string | null
+  type: string
+  avatar?: string | null
+  last_message: string | null
+  last_message_time: number | null
+  unread: number
+  otherUserId?: string
+}
+type ReplyPayload = {
+  id: string
+  senderId: string
+  senderName?: string
+  text: string
+}
 
 const app = express()
 const httpServer = createServer(app)
-const JWT_SECRET = process.env.JWT_SECRET || 'light-secret-change-in-prod'
-const PORT = process.env.PORT || 3000
+const io = new Server(httpServer, {
+  cors: { origin: '*' }
+})
+
+const onlineUsers = new Map<string, OnlineUserState>()
 
 app.use(cors())
-app.use(express.json({ limit: '10mb' })) // Увеличиваем лимит для base64 изображений
+app.use(express.json({ limit: '10mb' }))
 app.use('/api/auth', authRouter)
 
-// Middleware для проверки токена
-function verifyToken(token: string): { id: string; username: string } | null {
+function verifyToken(token: string): AuthTokenPayload | null {
   try {
-    return jwt.verify(token, JWT_SECRET) as { id: string; username: string }
+    return jwt.verify(token, JWT_SECRET) as AuthTokenPayload
   } catch {
     return null
   }
 }
 
-// REST: валидация токена и получение данных пользователя
-app.get('/api/auth/validate', (req, res) => {
+function getRequestUser(req: Request): AuthTokenPayload | null {
   const token = req.headers.authorization?.split(' ')[1]
-  const user = token ? verifyToken(token) : null
-  if (!user) return res.status(401).json({ error: 'Invalid token' })
-  
-  // Проверяем что пользователь существует в БД и возвращаем его данные
-  const dbUser = db.prepare('SELECT id, username, display_name, avatar FROM users WHERE id = ?').get(user.id) as any
-  if (!dbUser) return res.status(401).json({ error: 'User not found' })
-  
-  return res.json({ 
+  return token ? verifyToken(token) : null
+}
+
+function getPresenceStatus(lastSeen: number, isOnline: boolean): PresenceStatus {
+  if (isOnline) {
+    return 'online'
+  }
+
+  if (!lastSeen) {
+    return 'offline'
+  }
+
+  const elapsed = Date.now() - lastSeen
+  if (elapsed < 5 * 60 * 1000) {
+    return 'recently'
+  }
+
+  return 'offline'
+}
+
+function touchUserLastSeen(userId: string, timestamp = Date.now()) {
+  db.prepare('UPDATE users SET last_seen = ? WHERE id = ?').run(timestamp, userId)
+
+  const existing = onlineUsers.get(userId)
+  if (!existing) {
+    return
+  }
+
+  existing.lastSeen = timestamp
+  onlineUsers.set(userId, existing)
+}
+
+function getUserStatus(userId: string): UserStatus {
+  const onlineUser = onlineUsers.get(userId)
+  if (onlineUser && onlineUser.socketIds.size > 0) {
+    return {
+      status: 'online',
+      lastSeen: onlineUser.lastSeen
+    }
+  }
+
+  const userData = db.prepare('SELECT last_seen FROM users WHERE id = ?').get(userId) as { last_seen?: number } | undefined
+  const lastSeen = userData?.last_seen ?? onlineUser?.lastSeen ?? 0
+
+  return {
+    status: getPresenceStatus(lastSeen, false),
+    lastSeen
+  }
+}
+
+function estimateBase64Bytes(value: string): number {
+  const base64 = value.includes(',') ? value.split(',')[1] : value
+  const normalized = base64.trim()
+  const padding = normalized.endsWith('==') ? 2 : normalized.endsWith('=') ? 1 : 0
+
+  return Math.max(0, Math.floor((normalized.length * 3) / 4) - padding)
+}
+
+function getVisibleChats(userId: string): ChatSummary[] {
+  const chats = db.prepare(`
+    SELECT c.id, c.name, c.type, c.created_at,
+      (
+        SELECT m.text
+        FROM messages m
+        LEFT JOIN hidden_messages hm ON hm.message_id = m.id AND hm.user_id = ?
+        WHERE m.chat_id = c.id AND hm.message_id IS NULL
+        ORDER BY m.created_at DESC
+        LIMIT 1
+      ) AS last_message,
+      (
+        SELECT m.created_at
+        FROM messages m
+        LEFT JOIN hidden_messages hm ON hm.message_id = m.id AND hm.user_id = ?
+        WHERE m.chat_id = c.id AND hm.message_id IS NULL
+        ORDER BY m.created_at DESC
+        LIMIT 1
+      ) AS last_message_time,
+      (
+        SELECT COUNT(*)
+        FROM messages m
+        LEFT JOIN hidden_messages hm ON hm.message_id = m.id AND hm.user_id = ?
+        WHERE m.chat_id = c.id
+          AND hm.message_id IS NULL
+          AND m.read = 0
+          AND m.sender_id != ?
+      ) AS unread
+    FROM chats c
+    JOIN chat_members cm ON cm.chat_id = c.id
+    LEFT JOIN hidden_chats hc ON hc.chat_id = c.id AND hc.user_id = ?
+    WHERE cm.user_id = ? AND hc.chat_id IS NULL
+    ORDER BY COALESCE(last_message_time, c.created_at) DESC, c.created_at DESC
+  `).all(userId, userId, userId, userId, userId, userId) as Array<{
+    id: string
+    name: string | null
+    type: string
+    created_at: number
+    last_message: string | null
+    last_message_time: number | null
+    unread: number
+  }>
+
+  return chats.map((chat) => {
+    if (chat.type !== 'direct') {
+      return chat
+    }
+
+    const otherMember = db.prepare(`
+      SELECT u.id, u.avatar, u.display_name
+      FROM chat_members cm
+      JOIN users u ON u.id = cm.user_id
+      WHERE cm.chat_id = ? AND cm.user_id != ?
+      LIMIT 1
+    `).get(chat.id, userId) as { id: string; avatar: string | null; display_name: string } | undefined
+
+    if (!otherMember) {
+      return chat
+    }
+
+    return {
+      ...chat,
+      avatar: otherMember.avatar,
+      name: otherMember.display_name || chat.name,
+      otherUserId: otherMember.id
+    }
+  })
+}
+
+function getChatForUser(chatId: string, userId: string): ChatSummary | undefined {
+  return getVisibleChats(userId).find((chat) => chat.id === chatId)
+}
+
+function getChatParticipantIds(chatId: string): string[] {
+  const members = db.prepare('SELECT user_id FROM chat_members WHERE chat_id = ?').all(chatId) as Array<{ user_id: string }>
+  return members.map((member) => member.user_id)
+}
+
+function unhideChatForUsers(chatId: string, userIds: string[]) {
+  if (userIds.length === 0) {
+    return
+  }
+
+  const placeholders = userIds.map(() => '?').join(', ')
+  db.prepare(`DELETE FROM hidden_chats WHERE chat_id = ? AND user_id IN (${placeholders})`).run(chatId, ...userIds)
+}
+
+function emitToUser(userId: string, event: string, payload: unknown) {
+  const userState = onlineUsers.get(userId)
+  if (!userState) {
+    return
+  }
+
+  for (const socketId of userState.socketIds) {
+    const socket = io.sockets.sockets.get(socketId)
+    socket?.emit(event, payload)
+  }
+}
+
+function joinUserSocketsToChat(chatId: string, userId: string) {
+  const userState = onlineUsers.get(userId)
+  if (!userState) {
+    return
+  }
+
+  for (const socketId of userState.socketIds) {
+    const socket = io.sockets.sockets.get(socketId)
+    socket?.join(chatId)
+  }
+}
+
+function cleanupOldMessages() {
+  try {
+    const sevenDaysAgo = Math.floor(Date.now() / 1000) - (7 * 24 * 60 * 60)
+    const oldMessages = db.prepare('SELECT id FROM messages WHERE created_at < ?').all(sevenDaysAgo) as Array<{ id: string }>
+
+    if (oldMessages.length === 0) {
+      return
+    }
+
+    const cleanup = db.transaction(() => {
+      const batchSize = 500
+
+      for (let i = 0; i < oldMessages.length; i += batchSize) {
+        const batch = oldMessages.slice(i, i + batchSize)
+        const placeholders = batch.map(() => '?').join(', ')
+        db.prepare(`DELETE FROM hidden_messages WHERE message_id IN (${placeholders})`).run(...batch.map((message) => message.id))
+      }
+
+      return db.prepare('DELETE FROM messages WHERE created_at < ?').run(sevenDaysAgo).changes
+    })
+
+    const deletedCount = cleanup()
+    console.log(`Deleted ${deletedCount} messages older than 7 days`)
+  } catch (error) {
+    console.error('Cleanup error:', error)
+  }
+}
+
+setInterval(cleanupOldMessages, 24 * 60 * 60 * 1000)
+cleanupOldMessages()
+
+app.get('/health', (_req, res) => {
+  res.json({ ok: true, timestamp: Date.now() })
+})
+
+app.get('/api/auth/validate', (req, res) => {
+  const user = getRequestUser(req)
+  if (!user) {
+    return res.status(401).json({ error: 'Invalid token' })
+  }
+
+  const dbUser = db.prepare('SELECT id, username, display_name, avatar FROM users WHERE id = ?').get(user.id) as
+    | { id: string; username: string; display_name: string; avatar: string | null }
+    | undefined
+
+  if (!dbUser) {
+    return res.status(401).json({ error: 'User not found' })
+  }
+
+  touchUserLastSeen(dbUser.id)
+
+  return res.json({
     valid: true,
     user: {
       id: dbUser.id,
@@ -46,51 +282,58 @@ app.get('/api/auth/validate', (req, res) => {
   })
 })
 
-// REST: обновить профиль пользователя
 app.put('/api/profile', (req, res) => {
   try {
-    const token = req.headers.authorization?.split(' ')[1]
-    const user = token ? verifyToken(token) : null
-    if (!user) return res.status(401).json({ error: 'Unauthorized' })
+    const user = getRequestUser(req)
+    if (!user) {
+      return res.status(401).json({ error: 'Unauthorized' })
+    }
 
-    const { displayName, username, avatar } = req.body
+    const currentUser = db.prepare('SELECT username FROM users WHERE id = ?').get(user.id) as { username: string } | undefined
+    if (!currentUser) {
+      return res.status(404).json({ error: 'User not found' })
+    }
 
-    // Валидация displayName
-    if (!displayName || !displayName.trim()) {
+    const displayName = typeof req.body.displayName === 'string' ? req.body.displayName.trim() : ''
+    const username = typeof req.body.username === 'string' ? req.body.username.trim().toLowerCase() : ''
+    const avatar = typeof req.body.avatar === 'string' && req.body.avatar ? req.body.avatar : null
+
+    if (!displayName) {
       return res.status(400).json({ error: 'Display name is required' })
     }
-    
-    if (displayName.trim().length > 100) {
+    if (displayName.length > 100) {
       return res.status(400).json({ error: 'Display name too long' })
     }
-
-    // Валидация username
-    if (username && username.length < 4) {
+    if (!username || username.length < 4) {
       return res.status(400).json({ error: 'Username must be at least 4 characters' })
     }
-    
-    if (username && !/^[a-zA-Z0-9_]+$/.test(username)) {
+    if (!/^[a-zA-Z0-9_]+$/.test(username)) {
       return res.status(400).json({ error: 'Username can only contain letters, numbers and underscore' })
     }
-
-    // Валидация аватара (проверяем размер base64)
-    if (avatar && avatar.length > 5 * 1024 * 1024) {
+    if (avatar && !avatar.startsWith('data:image/')) {
+      return res.status(400).json({ error: 'Avatar must be an image data URL' })
+    }
+    if (avatar && estimateBase64Bytes(avatar) > 5 * 1024 * 1024) {
       return res.status(400).json({ error: 'Avatar too large (max 5MB)' })
     }
 
-    // Проверка username на уникальность (если меняется)
-    if (username && username !== user.username) {
+    if (username !== currentUser.username) {
       const existing = db.prepare('SELECT id FROM users WHERE username = ? AND id != ?').get(username, user.id)
       if (existing) {
         return res.status(409).json({ error: 'Username already taken' })
       }
     }
 
-    // Обновляем профиль
-    db.prepare('UPDATE users SET display_name = ?, username = ?, avatar = ? WHERE id = ?')
-      .run(displayName.trim(), username || user.username, avatar || null, user.id)
+    db.prepare('UPDATE users SET display_name = ?, username = ?, avatar = ?, last_seen = ? WHERE id = ?')
+      .run(displayName, username, avatar, Date.now(), user.id)
 
-    const updatedUser = db.prepare('SELECT id, username, display_name, avatar FROM users WHERE id = ?').get(user.id) as any
+    const updatedUser = db.prepare('SELECT id, username, display_name, avatar FROM users WHERE id = ?').get(user.id) as
+      | { id: string; username: string; display_name: string; avatar: string | null }
+      | undefined
+
+    if (!updatedUser) {
+      return res.status(404).json({ error: 'User not found' })
+    }
 
     return res.json({
       user: {
@@ -100,622 +343,450 @@ app.put('/api/profile', (req, res) => {
         avatar: updatedUser.avatar
       }
     })
-  } catch (err: any) {
-    console.error('Profile update error:', err)
-    return res.status(500).json({ error: err.message })
+  } catch (error: any) {
+    console.error('Profile update error:', error)
+    return res.status(500).json({ error: error.message })
   }
 })
 
-// REST: поиск пользователей
 app.get('/api/users/search', (req, res) => {
-  const token = req.headers.authorization?.split(' ')[1]
-  const user = token ? verifyToken(token) : null
-  if (!user) return res.status(401).json({ error: 'Unauthorized' })
+  const user = getRequestUser(req)
+  if (!user) {
+    return res.status(401).json({ error: 'Unauthorized' })
+  }
 
-  const query = req.query.q as string
-  if (!query || query.length < 2) {
+  const query = typeof req.query.q === 'string' ? req.query.q.trim() : ''
+  if (query.length < 2) {
     return res.json([])
   }
-  
-  // Защита от слишком длинных запросов
   if (query.length > 50) {
     return res.status(400).json({ error: 'Query too long' })
   }
 
+  const likeQuery = `%${query}%`
   const users = db.prepare(`
     SELECT id, username, display_name, avatar
     FROM users
-    WHERE username LIKE ? AND id != ?
+    WHERE id != ? AND (username LIKE ? OR display_name LIKE ?)
+    ORDER BY CASE WHEN username LIKE ? THEN 0 ELSE 1 END, display_name ASC
     LIMIT 20
-  `).all(`%${query}%`, user.id)
+  `).all(user.id, likeQuery, likeQuery, likeQuery) as Array<{
+    id: string
+    username: string
+    display_name: string
+    avatar: string | null
+  }>
 
   return res.json(users)
 })
 
-// REST: удалить чат
 app.delete('/api/chats/:chatId', (req, res) => {
   try {
-    const token = req.headers.authorization?.split(' ')[1]
-    const user = token ? verifyToken(token) : null
-    if (!user) return res.status(401).json({ error: 'Unauthorized' })
+    const user = getRequestUser(req)
+    if (!user) {
+      return res.status(401).json({ error: 'Unauthorized' })
+    }
 
     const { chatId } = req.params
+    const member = db.prepare('SELECT 1 FROM chat_members WHERE chat_id = ? AND user_id = ?').get(chatId, user.id)
+    if (!member) {
+      return res.status(403).json({ error: 'Not a member' })
+    }
 
-    // Проверяем что пользователь является участником чата
-    const member = db.prepare('SELECT * FROM chat_members WHERE chat_id = ? AND user_id = ?').get(chatId, user.id)
-    if (!member) return res.status(403).json({ error: 'Not a member' })
-
-    // Используем транзакцию для атомарности
-    const deleteChat = db.transaction(() => {
-      // Получаем ID старых сообщений
-      const messageIds = db.prepare('SELECT id FROM messages WHERE chat_id = ?').all(chatId) as { id: string }[]
-      
-      // Удаляем только сообщения и связи, но НЕ сам чат
-      db.prepare('DELETE FROM messages WHERE chat_id = ?').run(chatId)
-      
-      // Удаляем скрытые сообщения пакетами
-      if (messageIds.length > 0) {
-        const batchSize = 500
-        for (let i = 0; i < messageIds.length; i += batchSize) {
-          const batch = messageIds.slice(i, i + batchSize)
-          const placeholders = batch.map(() => '?').join(',')
-          db.prepare(`DELETE FROM hidden_messages WHERE message_id IN (${placeholders})`).run(...batch.map(m => m.id))
-        }
-      }
-      
-      // Удаляем чат из списка только для текущего пользователя
-      db.prepare('DELETE FROM chat_members WHERE chat_id = ? AND user_id = ?').run(chatId, user.id)
-      
-      // Если больше нет участников, удаляем сам чат
-      const remainingMembers = db.prepare('SELECT COUNT(*) as count FROM chat_members WHERE chat_id = ?').get(chatId) as { count: number }
-      if (remainingMembers.count === 0) {
-        db.prepare('DELETE FROM chats WHERE id = ?').run(chatId)
-      }
-    })
-
-    deleteChat()
+    db.prepare('INSERT OR REPLACE INTO hidden_chats (chat_id, user_id, hidden_at) VALUES (?, ?, ?)')
+      .run(chatId, user.id, Math.floor(Date.now() / 1000))
 
     return res.json({ success: true })
-  } catch (err: any) {
-    console.error('Delete chat error:', err)
-    return res.status(500).json({ error: err.message })
+  } catch (error: any) {
+    console.error('Delete chat error:', error)
+    return res.status(500).json({ error: error.message })
   }
 })
 
-// REST: создать или получить direct чат
 app.post('/api/chats/direct', (req, res) => {
-  const token = req.headers.authorization?.split(' ')[1]
-  const user = token ? verifyToken(token) : null
-  if (!user) return res.status(401).json({ error: 'Unauthorized' })
+  const user = getRequestUser(req)
+  if (!user) {
+    return res.status(401).json({ error: 'Unauthorized' })
+  }
 
-  const { userId } = req.body
-  if (!userId) return res.status(400).json({ error: 'userId required' })
-  
-  console.log('Creating chat:', { currentUserId: user.id, targetUserId: userId })
-  
-  // Запрещаем создание чата с самим собой
-  if (userId === user.id) {
-    console.error('Attempt to create self-chat:', user.id)
+  const targetUserId = typeof req.body.userId === 'string' ? req.body.userId : ''
+  if (!targetUserId) {
+    return res.status(400).json({ error: 'userId required' })
+  }
+  if (targetUserId === user.id) {
     return res.status(400).json({ error: 'Cannot create chat with yourself' })
   }
 
-  // Проверяем что целевой пользователь существует
-  const targetUser = db.prepare('SELECT id, username, display_name, avatar FROM users WHERE id = ?').get(userId) as any
+  const targetUser = db.prepare('SELECT id FROM users WHERE id = ?').get(targetUserId) as { id: string } | undefined
   if (!targetUser) {
-    console.error('Target user not found:', userId)
     return res.status(404).json({ error: 'User not found' })
   }
 
-  // Используем транзакцию для предотвращения race condition
-  const createOrGetChat = db.transaction(() => {
-    // Проверяем существует ли уже чат между ЭТИМИ ДВУМЯ пользователями
+  const result = db.transaction(() => {
     const existingChat = db.prepare(`
-      SELECT c.id, c.name, c.type
+      SELECT c.id
       FROM chats c
       WHERE c.type = 'direct'
-      AND EXISTS (
-        SELECT 1 FROM chat_members cm1 
-        WHERE cm1.chat_id = c.id AND cm1.user_id = ?
-      )
-      AND EXISTS (
-        SELECT 1 FROM chat_members cm2 
-        WHERE cm2.chat_id = c.id AND cm2.user_id = ?
-      )
-      AND (
-        SELECT COUNT(*) FROM chat_members cm 
-        WHERE cm.chat_id = c.id
-      ) = 2
+        AND EXISTS (
+          SELECT 1
+          FROM chat_members cm1
+          WHERE cm1.chat_id = c.id AND cm1.user_id = ?
+        )
+        AND EXISTS (
+          SELECT 1
+          FROM chat_members cm2
+          WHERE cm2.chat_id = c.id AND cm2.user_id = ?
+        )
+        AND (
+          SELECT COUNT(*)
+          FROM chat_members cm
+          WHERE cm.chat_id = c.id
+        ) = 2
       LIMIT 1
-    `).get(user.id, userId) as any
+    `).get(user.id, targetUserId) as { id: string } | undefined
 
     if (existingChat) {
-      console.log('Chat already exists between users:', existingChat.id)
-      return { existing: true, chatId: existingChat.id }
+      db.prepare('DELETE FROM hidden_chats WHERE chat_id = ? AND user_id = ?').run(existingChat.id, user.id)
+      return { chatId: existingChat.id, created: false }
     }
 
-    // Создаем новый чат
     const chatId = randomUUID()
-    
-    db.prepare('INSERT INTO chats (id, type, name) VALUES (?, ?, ?)').run(chatId, 'direct', targetUser.display_name)
-    db.prepare('INSERT INTO chat_members (chat_id, user_id) VALUES (?, ?), (?, ?)').run(chatId, user.id, chatId, userId)
+    db.prepare('INSERT INTO chats (id, type, name) VALUES (?, ?, ?)').run(chatId, 'direct', null)
+    db.prepare('INSERT INTO chat_members (chat_id, user_id) VALUES (?, ?), (?, ?)').run(chatId, user.id, chatId, targetUserId)
 
-    console.log('Chat created:', chatId)
-    return { existing: false, chatId }
-  })
+    return { chatId, created: true }
+  })()
 
-  const result = createOrGetChat()
-  
-  // Возвращаем чат с полными данными
-  const newChat = { 
-    id: result.chatId, 
-    type: 'direct', 
-    name: targetUser.display_name,
-    avatar: targetUser.avatar,
-    last_message: null,
-    last_message_time: null,
-    unread: 0,
-    otherUserId: userId
+  const chatForRequester = getChatForUser(result.chatId, user.id)
+  if (!chatForRequester) {
+    return res.status(500).json({ error: 'Failed to load chat' })
   }
-  
-  // Если чат новый, уведомляем ОБОИХ пользователей через socket
-  if (!result.existing) {
-    const currentUserSocket = onlineUsers.get(user.id)
-    const targetUserSocket = onlineUsers.get(userId)
-    
-    if (currentUserSocket) {
-      const socket = io.sockets.sockets.get(currentUserSocket.socketId)
-      if (socket) {
-        socket.join(result.chatId)
-        socket.emit('chat:created', newChat)
-      }
-    }
-    
-    if (targetUserSocket) {
-      const socket = io.sockets.sockets.get(targetUserSocket.socketId)
-      if (socket) {
-        socket.join(result.chatId)
-        // Для второго пользователя имя чата - это имя создателя
-        const creator = db.prepare('SELECT display_name, avatar FROM users WHERE id = ?').get(user.id) as any
-        socket.emit('chat:created', {
-          ...newChat,
-          name: creator.display_name,
-          avatar: creator.avatar,
-          otherUserId: user.id
-        })
-      }
+
+  joinUserSocketsToChat(result.chatId, user.id)
+
+  if (result.created) {
+    joinUserSocketsToChat(result.chatId, targetUserId)
+    emitToUser(user.id, 'chat:created', chatForRequester)
+
+    const chatForTarget = getChatForUser(result.chatId, targetUserId)
+    if (chatForTarget) {
+      emitToUser(targetUserId, 'chat:created', chatForTarget)
     }
   }
-  
-  return res.json({ chat: newChat })
+
+  return res.json({ chat: chatForRequester })
 })
 
-// REST: получить онлайн пользователей с lastSeen
 app.get('/api/users/online', (req, res) => {
-  const token = req.headers.authorization?.split(' ')[1]
-  const user = token ? verifyToken(token) : null
-  if (!user) return res.status(401).json({ error: 'Unauthorized' })
+  const user = getRequestUser(req)
+  if (!user) {
+    return res.status(401).json({ error: 'Unauthorized' })
+  }
 
-  const now = Date.now()
-  const usersStatus: Record<string, { status: string; lastSeen: number }> = {}
-  
-  onlineUsers.forEach((userData, userId) => {
-    const timeSinceLastSeen = now - userData.lastSeen
-    let status = 'offline'
-    
-    if (timeSinceLastSeen < 10000) {
-      // Активен в последние 10 секунд
-      status = 'online'
-    } else if (timeSinceLastSeen < 300000) {
-      // Был активен в последние 5 минут
-      status = 'recently'
-    }
-    
-    usersStatus[userId] = {
-      status,
-      lastSeen: userData.lastSeen
-    }
-  })
-  
-  return res.json(usersStatus)
+  const statuses: Record<string, UserStatus> = {}
+  for (const [userId] of onlineUsers) {
+    statuses[userId] = getUserStatus(userId)
+  }
+
+  return res.json(statuses)
 })
 
-// REST: синхронизация - получить все данные одним запросом (оптимизация)
 app.get('/api/sync', (req, res) => {
-  const token = req.headers.authorization?.split(' ')[1]
-  const user = token ? verifyToken(token) : null
-  if (!user) return res.status(401).json({ error: 'Unauthorized' })
+  const user = getRequestUser(req)
+  if (!user) {
+    return res.status(401).json({ error: 'Unauthorized' })
+  }
 
-  // Получаем чаты с информацией о собеседнике
-  const chats = db.prepare(`
-    SELECT c.id, c.name, c.type,
-      (SELECT text FROM messages WHERE chat_id = c.id ORDER BY created_at DESC LIMIT 1) as last_message,
-      (SELECT created_at FROM messages WHERE chat_id = c.id ORDER BY created_at DESC LIMIT 1) as last_message_time,
-      (SELECT COUNT(*) FROM messages WHERE chat_id = c.id AND read = 0 AND sender_id != ?) as unread
-    FROM chats c
-    JOIN chat_members cm ON cm.chat_id = c.id
-    WHERE cm.user_id = ?
-    ORDER BY last_message_time DESC
-  `).all(user.id, user.id) as any[]
+  const chats = getVisibleChats(user.id)
+  const userStatuses: Record<string, UserStatus> = {}
 
-  // Для direct чатов добавляем информацию о собеседнике
-  const enrichedChats = chats.map(chat => {
-    if (chat.type === 'direct') {
-      const otherMember = db.prepare(`
-        SELECT u.id, u.avatar, u.display_name
-        FROM chat_members cm
-        JOIN users u ON u.id = cm.user_id
-        WHERE cm.chat_id = ? AND cm.user_id != ?
-        LIMIT 1
-      `).get(chat.id, user.id) as any
-      
-      if (otherMember) {
-        return {
-          ...chat,
-          avatar: otherMember.avatar,
-          name: otherMember.display_name || chat.name,
-          otherUserId: otherMember.id
-        }
-      }
+  for (const chat of chats) {
+    if (chat.otherUserId && !userStatuses[chat.otherUserId]) {
+      userStatuses[chat.otherUserId] = getUserStatus(chat.otherUserId)
     }
-    return chat
-  })
+  }
 
-  // Получаем ID всех собеседников
-  const otherUserIds = enrichedChats
-    .filter(c => c.otherUserId)
-    .map(c => c.otherUserId)
-
-  // Получаем статусы всех собеседников
-  const userStatuses: Record<string, { status: string; lastSeen: number }> = {}
-  otherUserIds.forEach(userId => {
-    const onlineUser = onlineUsers.get(userId)
-    if (onlineUser) {
-      userStatuses[userId] = {
-        status: 'online',
-        lastSeen: Date.now()
-      }
-    } else {
-      // Получаем last_seen из БД
-      const userData = db.prepare('SELECT last_seen FROM users WHERE id = ?').get(userId) as any
-      const lastSeen = userData?.last_seen || 0
-      const timeSince = Date.now() - lastSeen
-      
-      userStatuses[userId] = {
-        status: timeSince < 300000 ? 'recently' : 'offline',
-        lastSeen
-      }
-    }
-  })
-
-  // Возвращаем все данные одним пакетом
   return res.json({
-    chats: enrichedChats,
+    chats,
     userStatuses,
     timestamp: Date.now()
   })
 })
 
-// REST: получить список чатов пользователя
 app.get('/api/chats', (req, res) => {
-  const token = req.headers.authorization?.split(' ')[1]
-  const user = token ? verifyToken(token) : null
-  if (!user) return res.status(401).json({ error: 'Unauthorized' })
+  const user = getRequestUser(req)
+  if (!user) {
+    return res.status(401).json({ error: 'Unauthorized' })
+  }
 
-  // Получаем чаты с информацией о собеседнике для direct чатов
-  const chats = db.prepare(`
-    SELECT c.id, c.name, c.type,
-      (SELECT text FROM messages WHERE chat_id = c.id ORDER BY created_at DESC LIMIT 1) as last_message,
-      (SELECT created_at FROM messages WHERE chat_id = c.id ORDER BY created_at DESC LIMIT 1) as last_message_time,
-      (SELECT COUNT(*) FROM messages WHERE chat_id = c.id AND read = 0 AND sender_id != ?) as unread
-    FROM chats c
-    JOIN chat_members cm ON cm.chat_id = c.id
-    WHERE cm.user_id = ?
-    ORDER BY last_message_time DESC
-  `).all(user.id, user.id) as any[]
-
-  // Для direct чатов добавляем аватар собеседника
-  const enrichedChats = chats.map(chat => {
-    if (chat.type === 'direct') {
-      // Находим собеседника
-      const otherMember = db.prepare(`
-        SELECT u.id, u.avatar, u.display_name
-        FROM chat_members cm
-        JOIN users u ON u.id = cm.user_id
-        WHERE cm.chat_id = ? AND cm.user_id != ?
-        LIMIT 1
-      `).get(chat.id, user.id) as any
-      
-      if (otherMember) {
-        return {
-          ...chat,
-          avatar: otherMember.avatar,
-          name: otherMember.display_name || chat.name,
-          otherUserId: otherMember.id
-        }
-      }
-    }
-    return chat
-  })
-
-  return res.json(enrichedChats)
+  return res.json(getVisibleChats(user.id))
 })
 
-// REST: получить сообщения чата
 app.get('/api/chats/:chatId/messages', (req, res) => {
-  const token = req.headers.authorization?.split(' ')[1]
-  const user = token ? verifyToken(token) : null
-  if (!user) return res.status(401).json({ error: 'Unauthorized' })
+  const user = getRequestUser(req)
+  if (!user) {
+    return res.status(401).json({ error: 'Unauthorized' })
+  }
 
   const { chatId } = req.params
-  
-  // Проверяем что пользователь является участником чата
-  const member = db.prepare('SELECT * FROM chat_members WHERE chat_id = ? AND user_id = ?').get(chatId, user.id)
+  const member = db.prepare('SELECT 1 FROM chat_members WHERE chat_id = ? AND user_id = ?').get(chatId, user.id)
   if (!member) {
-    console.error('User not a member of chat:', user.id, chatId)
     return res.status(403).json({ error: 'Not a member' })
   }
 
-  // Получаем сообщения, исключая скрытые для текущего пользователя
   const messages = db.prepare(`
-    SELECT m.id, m.chat_id, m.sender_id, m.text, m.created_at, m.read, m.reply_to, u.username, u.display_name
-    FROM messages m
-    JOIN users u ON u.id = m.sender_id
-    LEFT JOIN hidden_messages hm ON hm.message_id = m.id AND hm.user_id = ?
-    WHERE m.chat_id = ? AND hm.message_id IS NULL
-    ORDER BY m.created_at ASC
-    LIMIT 100
-  `).all(user.id, chatId) as any[]
+    SELECT recent.id, recent.chat_id, recent.sender_id, recent.text, recent.created_at, recent.read, recent.reply_to, u.username, u.display_name
+    FROM (
+      SELECT m.id, m.chat_id, m.sender_id, m.text, m.created_at, m.read, m.reply_to
+      FROM messages m
+      LEFT JOIN hidden_messages hm ON hm.message_id = m.id AND hm.user_id = ?
+      WHERE m.chat_id = ? AND hm.message_id IS NULL
+      ORDER BY m.created_at DESC
+      LIMIT 100
+    ) recent
+    JOIN users u ON u.id = recent.sender_id
+    ORDER BY recent.created_at ASC
+  `).all(user.id, chatId) as Array<{
+    id: string
+    chat_id: string
+    sender_id: string
+    text: string
+    created_at: number
+    read: number
+    reply_to: string | null
+    username: string
+    display_name: string
+  }>
 
-  // Парсим reply_to из JSON
-  const messagesWithReply = messages.map(msg => {
-    if (msg.reply_to) {
-      try {
-        const replyData = JSON.parse(msg.reply_to)
-        const replyToSender = db.prepare('SELECT display_name FROM users WHERE id = ?').get(replyData.senderId) as any
-        return {
-          ...msg,
-          reply_to: {
-            ...replyData,
-            senderName: replyToSender?.display_name || 'Unknown'
-          }
+  const messagesWithReply = messages.map((message) => {
+    if (!message.reply_to) {
+      return message
+    }
+
+    try {
+      const replyData = JSON.parse(message.reply_to) as ReplyPayload
+      const replySender = db.prepare('SELECT display_name FROM users WHERE id = ?').get(replyData.senderId) as
+        | { display_name: string }
+        | undefined
+
+      return {
+        ...message,
+        reply_to: {
+          ...replyData,
+          senderName: replySender?.display_name || 'Unknown'
         }
-      } catch (e) {
-        return msg
+      }
+    } catch {
+      return {
+        ...message,
+        reply_to: null
       }
     }
-    return msg
   })
 
-  console.log(`Loaded ${messagesWithReply.length} messages for chat ${chatId}, user ${user.id}`)
-  if (messagesWithReply.length > 0) {
-    console.log('Sample message:', JSON.stringify(messagesWithReply[0]))
-  }
   return res.json(messagesWithReply)
 })
 
-// Socket.IO
-const io = new Server(httpServer, {
-  cors: { origin: '*' }
-})
-
-// Онлайн пользователи: userId -> { socketId, lastSeen }
-const onlineUsers = new Map<string, { socketId: string; lastSeen: number }>()
-
-// Функция для удаления старых сообщений (старше 7 дней)
-function cleanupOldMessages() {
-  try {
-    const sevenDaysAgo = Math.floor(Date.now() / 1000) - (7 * 24 * 60 * 60)
-    
-    // Получаем ID старых сообщений
-    const oldMessages = db.prepare('SELECT id FROM messages WHERE created_at < ?').all(sevenDaysAgo) as { id: string }[]
-    
-    if (oldMessages.length > 0) {
-      // Используем транзакцию для атомарности
-      const cleanup = db.transaction(() => {
-        // Удаляем скрытые сообщения пакетами по 500
-        const batchSize = 500
-        for (let i = 0; i < oldMessages.length; i += batchSize) {
-          const batch = oldMessages.slice(i, i + batchSize)
-          const placeholders = batch.map(() => '?').join(',')
-          db.prepare(`DELETE FROM hidden_messages WHERE message_id IN (${placeholders})`).run(...batch.map(m => m.id))
-        }
-        
-        // Удаляем сами сообщения
-        const result = db.prepare('DELETE FROM messages WHERE created_at < ?').run(sevenDaysAgo)
-        return result.changes
-      })
-      
-      const deletedCount = cleanup()
-      console.log(`Deleted ${deletedCount} messages older than 7 days`)
-    }
-  } catch (err) {
-    console.error('Cleanup error:', err)
-  }
-}
-
-// Запускаем очистку каждые 24 часа
-setInterval(cleanupOldMessages, 24 * 60 * 60 * 1000)
-// Запускаем очистку при старте сервера
-cleanupOldMessages()
-
 io.use((socket, next) => {
   const token = socket.handshake.auth.token
-  const user = verifyToken(token)
-  if (!user) return next(new Error('Unauthorized'))
+  const user = typeof token === 'string' ? verifyToken(token) : null
+
+  if (!user) {
+    return next(new Error('Unauthorized'))
+  }
+
   socket.data.user = user
   next()
 })
 
 io.on('connection', (socket) => {
-  const user = socket.data.user
+  const user = socket.data.user as AuthTokenPayload
   const now = Date.now()
-  onlineUsers.set(user.id, { socketId: socket.id, lastSeen: now })
+  const state = onlineUsers.get(user.id) ?? { socketIds: new Set<string>(), lastSeen: now }
+
+  state.socketIds.add(socket.id)
+  state.lastSeen = now
+  onlineUsers.set(user.id, state)
+  touchUserLastSeen(user.id, now)
+
   io.emit('user:online', { userId: user.id, lastSeen: now })
-  console.log('User connected:', user.username, socket.id)
 
-  // Присоединяемся ко всем чатам пользователя
-  const chats = db.prepare(`
-    SELECT chat_id FROM chat_members WHERE user_id = ?
-  `).all(user.id) as { chat_id: string }[]
-  chats.forEach(c => socket.join(c.chat_id))
+  const chats = db.prepare('SELECT chat_id FROM chat_members WHERE user_id = ?').all(user.id) as Array<{ chat_id: string }>
+  chats.forEach((chat) => socket.join(chat.chat_id))
 
-  // Пинг-понг для проверки соединения и обновления lastSeen
   socket.on('ping', (timestamp: number) => {
-    const now = Date.now()
-    const userData = onlineUsers.get(user.id)
-    if (userData) {
-      userData.lastSeen = now
-      onlineUsers.set(user.id, userData)
-    }
+    const pingTime = Date.now()
+    touchUserLastSeen(user.id, pingTime)
     socket.emit('pong', timestamp)
   })
 
-  // Пометить сообщения как прочитанные
   socket.on('messages:read', ({ chatId }: { chatId: string }) => {
-    // Помечаем все сообщения в чате как прочитанные для текущего пользователя
+    const member = db.prepare('SELECT 1 FROM chat_members WHERE chat_id = ? AND user_id = ?').get(chatId, user.id)
+    if (!member) {
+      return
+    }
+
     db.prepare(`
-      UPDATE messages 
-      SET read = 1 
+      UPDATE messages
+      SET read = 1
       WHERE chat_id = ? AND sender_id != ? AND read = 0
     `).run(chatId, user.id)
-    
-    console.log('Messages marked as read:', { chatId, userId: user.id })
-    
-    // Уведомляем отправителей что сообщения прочитаны
+
     io.to(chatId).emit('messages:read', { chatId, userId: user.id })
   })
 
-  // Отправка сообщения
-  socket.on('message:send', ({ chatId, text, replyTo }: { chatId: string; text: string; replyTo?: any }) => {
+  socket.on('message:send', ({ chatId, text, replyTo }: { chatId: string; text: string; replyTo?: ReplyPayload }) => {
     try {
-      if (!text?.trim()) return
-      
-      // Проверяем лимит символов
-      if (text.trim().length > 1000) {
-        console.error('Message too long:', text.length)
+      const normalizedText = typeof text === 'string' ? text.trim() : ''
+      if (!normalizedText) {
+        return
+      }
+      if (normalizedText.length > 1000) {
         socket.emit('error', { message: 'Message too long' })
         return
       }
-      
-      // Проверяем что пользователь является участником чата
-      const member = db.prepare('SELECT * FROM chat_members WHERE chat_id = ? AND user_id = ?').get(chatId, user.id)
+
+      const member = db.prepare('SELECT 1 FROM chat_members WHERE chat_id = ? AND user_id = ?').get(chatId, user.id)
       if (!member) {
-        console.error('User not a member of chat:', user.id, chatId)
         socket.emit('error', { message: 'Not a member of this chat' })
         return
       }
-      
-      const id = randomUUID()
-      const now = Math.floor(Date.now() / 1000)
-      
-      // Сохраняем информацию об ответе если есть
-      const replyToData = replyTo ? JSON.stringify(replyTo) : null
-      
-      console.log('Saving message:', { id, chatId, senderId: user.id, text: text.trim(), replyTo: replyToData })
-      db.prepare('INSERT INTO messages (id, chat_id, sender_id, text, created_at, reply_to) VALUES (?, ?, ?, ?, ?, ?)')
-        .run(id, chatId, user.id, text.trim(), now, replyToData)
 
-      // Получаем имя отправителя для ответа
-      const sender = db.prepare('SELECT display_name FROM users WHERE id = ?').get(user.id) as any
-      
-      const msg: any = {
-        id, 
-        chatId, 
-        text: text.trim(),
-        senderId: user.id,
-        username: user.username,
-        createdAt: now * 1000,
-        read: false,
-      }
-      
-      // Добавляем информацию об ответе с именем отправителя
-      if (replyTo) {
-        const replyToSender = db.prepare('SELECT display_name FROM users WHERE id = ?').get(replyTo.senderId) as any
-        msg.replyTo = {
-          ...replyTo,
-          senderName: replyToSender?.display_name || 'Unknown'
+      let replyPayload: ReplyPayload | null = null
+      if (replyTo?.id) {
+        const replyMessage = db.prepare(`
+          SELECT id, sender_id, text
+          FROM messages
+          WHERE id = ? AND chat_id = ?
+          LIMIT 1
+        `).get(replyTo.id, chatId) as { id: string; sender_id: string; text: string } | undefined
+
+        if (!replyMessage) {
+          socket.emit('error', { message: 'Reply message not found' })
+          return
+        }
+
+        replyPayload = {
+          id: replyMessage.id,
+          senderId: replyMessage.sender_id,
+          text: replyMessage.text
         }
       }
-      
-      console.log('Broadcasting message to chat room:', chatId, 'message:', msg)
-      // КРИТИЧНО: отправляем сообщение ТОЛЬКО в комнату этого чата
-      // Socket.IO автоматически отправит только тем, кто в этой комнате
-      io.to(chatId).emit('message:new', msg)
-    } catch (err) {
-      console.error('Message send error:', err)
+
+      const messageId = randomUUID()
+      const createdAt = Math.floor(Date.now() / 1000)
+
+      db.prepare('INSERT INTO messages (id, chat_id, sender_id, text, created_at, reply_to) VALUES (?, ?, ?, ?, ?, ?)')
+        .run(messageId, chatId, user.id, normalizedText, createdAt, replyPayload ? JSON.stringify(replyPayload) : null)
+
+      const participantIds = getChatParticipantIds(chatId)
+      unhideChatForUsers(chatId, participantIds)
+
+      const message: {
+        id: string
+        chatId: string
+        text: string
+        senderId: string
+        username: string
+        createdAt: number
+        read: boolean
+        replyTo?: ReplyPayload
+      } = {
+        id: messageId,
+        chatId,
+        text: normalizedText,
+        senderId: user.id,
+        username: user.username,
+        createdAt: createdAt * 1000,
+        read: false
+      }
+
+      if (replyPayload) {
+        const replySender = db.prepare('SELECT display_name FROM users WHERE id = ?').get(replyPayload.senderId) as
+          | { display_name: string }
+          | undefined
+
+        message.replyTo = {
+          ...replyPayload,
+          senderName: replySender?.display_name || 'Unknown'
+        }
+      }
+
+      io.to(chatId).emit('message:new', message)
+    } catch (error) {
+      console.error('Message send error:', error)
       socket.emit('error', { message: 'Failed to send message' })
     }
   })
 
-  // Удаление сообщения
   socket.on('message:delete', ({ chatId, messageId, forEveryone }: { chatId: string; messageId: string; forEveryone: boolean }) => {
     try {
-      // Проверяем что пользователь является участником чата
-      const member = db.prepare('SELECT * FROM chat_members WHERE chat_id = ? AND user_id = ?').get(chatId, user.id)
+      const member = db.prepare('SELECT 1 FROM chat_members WHERE chat_id = ? AND user_id = ?').get(chatId, user.id)
       if (!member) {
-        console.error('User not a member of chat:', user.id, chatId)
         socket.emit('error', { message: 'Not a member of this chat' })
         return
       }
-      
-      // Проверяем что сообщение существует И принадлежит этому чату
-      const message = db.prepare('SELECT * FROM messages WHERE id = ? AND chat_id = ?').get(messageId, chatId) as any
+
+      const message = db.prepare('SELECT * FROM messages WHERE id = ? AND chat_id = ?').get(messageId, chatId) as
+        | { sender_id: string }
+        | undefined
       if (!message) {
-        console.error('Message not found in this chat:', messageId, chatId)
         socket.emit('error', { message: 'Message not found' })
         return
       }
-      
+
       if (forEveryone) {
-        // Удалить у всех может только отправитель
         if (message.sender_id !== user.id) {
-          console.error('User cannot delete message for everyone:', messageId, user.id)
           socket.emit('error', { message: 'You can only delete your own messages for everyone' })
           return
         }
-        
-        // Удаляем сообщение полностью из базы данных для всех
+
         db.prepare('DELETE FROM messages WHERE id = ?').run(messageId)
         db.prepare('DELETE FROM hidden_messages WHERE message_id = ?').run(messageId)
-        console.log('Message deleted for everyone:', messageId)
-        
-        // Уведомляем всех участников чата
         io.to(chatId).emit('message:deleted', { messageId, forEveryone: true })
-      } else {
-        // Скрываем сообщение только для текущего пользователя (работает для любых сообщений)
-        db.prepare('INSERT OR IGNORE INTO hidden_messages (message_id, user_id) VALUES (?, ?)').run(messageId, user.id)
-        console.log('Message hidden for user:', messageId, user.id)
-        
-        // Уведомляем только текущего пользователя
-        socket.emit('message:deleted', { messageId, forEveryone: false })
+        return
       }
-    } catch (err) {
-      console.error('Message delete error:', err)
+
+      db.prepare('INSERT OR IGNORE INTO hidden_messages (message_id, user_id) VALUES (?, ?)').run(messageId, user.id)
+      socket.emit('message:deleted', { messageId, forEveryone: false })
+    } catch (error) {
+      console.error('Message delete error:', error)
       socket.emit('error', { message: 'Failed to delete message' })
     }
   })
 
   socket.on('disconnect', () => {
-    const now = Date.now()
-    const userData = onlineUsers.get(user.id)
-    if (userData) {
-      userData.lastSeen = now
-      onlineUsers.set(user.id, userData)
-      
-      // Удаляем из Map через 5 минут если не переподключился
-      setTimeout(() => {
-        const currentData = onlineUsers.get(user.id)
-        if (currentData && currentData.lastSeen === now) {
-          onlineUsers.delete(user.id)
-          console.log('Removed user from online map:', user.username)
-        }
-      }, 5 * 60 * 1000)
+    const disconnectTime = Date.now()
+    const currentState = onlineUsers.get(user.id)
+
+    if (!currentState) {
+      return
     }
-    io.emit('user:offline', { userId: user.id, lastSeen: now })
-    console.log('User disconnected:', user.username)
+
+    currentState.socketIds.delete(socket.id)
+    currentState.lastSeen = disconnectTime
+    onlineUsers.set(user.id, currentState)
+    touchUserLastSeen(user.id, disconnectTime)
+
+    if (currentState.socketIds.size > 0) {
+      return
+    }
+
+    io.emit('user:offline', { userId: user.id, lastSeen: disconnectTime })
+
+    setTimeout(() => {
+      const latestState = onlineUsers.get(user.id)
+      if (!latestState) {
+        return
+      }
+
+      if (latestState.socketIds.size === 0 && latestState.lastSeen === disconnectTime) {
+        onlineUsers.delete(user.id)
+      }
+    }, 5 * 60 * 1000)
   })
 })
 
-httpServer.listen(PORT as number, '0.0.0.0', () => {
+httpServer.listen(PORT, '0.0.0.0', () => {
   console.log(`Light server running on 0.0.0.0:${PORT}`)
 })

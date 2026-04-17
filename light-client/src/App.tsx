@@ -1,247 +1,310 @@
-import { useState, useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ThemeProvider } from './context/ThemeContext'
 import { ToastProvider } from './context/ToastContext'
 import TitleBar from './components/TitleBar'
 import Sidebar from './components/Sidebar'
 import ChatWindow from './components/ChatWindow'
 import Login from './components/Login'
-import { connectSocket } from './api/socket'
+import { connectSocket, disconnectSocket } from './api/socket'
+import { requestJson, requestRaw } from './api/http'
+import type { AuthUser, ChatSummary, Message, SyncResponse, UserStatus } from './types'
+import {
+  clearStoredToken,
+  clearStoredUser,
+  getStoredToken,
+  getStoredUser,
+  setStoredToken,
+  setStoredUser
+} from './utils/session'
 import './App.css'
 
-interface AuthUser {
-  id: string
-  username: string
-  displayName: string
-  avatar?: string | null
+function parseJson<T>(value: string): T | null {
+  try {
+    return JSON.parse(value) as T
+  } catch {
+    return null
+  }
+}
+
+function moveChatToTop(chats: ChatSummary[], chatId: string, update: (chat: ChatSummary) => ChatSummary): ChatSummary[] {
+  const index = chats.findIndex((chat) => chat.id === chatId)
+  if (index === -1) {
+    return chats
+  }
+
+  const updatedChat = update(chats[index])
+  const nextChats = chats.filter((chat) => chat.id !== chatId)
+  return [updatedChat, ...nextChats]
 }
 
 export default function App() {
   const [token, setToken] = useState<string | null>(null)
   const [user, setUser] = useState<AuthUser | null>(null)
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null)
-  const [chats, setChats] = useState<any[]>([])
+  const [chats, setChats] = useState<ChatSummary[]>([])
   const [isValidating, setIsValidating] = useState(true)
-  const [userStatuses, setUserStatuses] = useState<Record<string, { status: string; lastSeen: number }>>({})
-  const [messagesCache, setMessagesCache] = useState<Record<string, any[]>>({}) // Кеш сообщений по chatId
+  const [userStatuses, setUserStatuses] = useState<Record<string, UserStatus>>({})
+  const [messagesCache, setMessagesCache] = useState<Record<string, Message[]>>({})
+
+  const selectedChatIdRef = useRef<string | null>(null)
+  const currentUserIdRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    selectedChatIdRef.current = selectedChatId
+  }, [selectedChatId])
+
+  useEffect(() => {
+    currentUserIdRef.current = user?.id ?? null
+  }, [user])
+
+  const loadChats = async (authToken?: string) => {
+    const currentToken = authToken || token
+    if (!currentToken) {
+      return
+    }
+
+    try {
+      const data = await requestJson<SyncResponse>('/api/sync', {
+        headers: { Authorization: `Bearer ${currentToken}` }
+      })
+
+      setChats(data.chats)
+      setUserStatuses(data.userStatuses)
+    } catch (error) {
+      console.error('Load chats error:', error)
+    }
+  }
 
   useEffect(() => {
     const validateToken = async () => {
-      // Читаем ТОЛЬКО токен из localStorage
-      const storedToken = localStorage.getItem('light-token')
-      
+      const storedToken = getStoredToken()
+      const storedUser = getStoredUser()
+
       if (!storedToken) {
         setIsValidating(false)
         return
       }
 
       try {
-        const lightAPI = (window as any).lightAPI
-        const result = await lightAPI.fetch('http://155.212.167.68:80/api/auth/validate', {
-          headers: { 'Authorization': `Bearer ${storedToken}` }
+        const result = await requestRaw('/api/auth/validate', {
+          headers: { Authorization: `Bearer ${storedToken}` }
         })
 
         if (!result.ok) {
-          // Токен невалидный - выходим
-          localStorage.removeItem('light-token')
+          if (result.status === 401) {
+            clearStoredToken()
+            clearStoredUser()
+            setToken(null)
+            setUser(null)
+          } else if (storedUser) {
+            setToken(storedToken)
+            setUser(storedUser)
+          }
+
+          return
+        }
+
+        const data = parseJson<{ valid: boolean; user: AuthUser }>(result.text)
+        if (!data?.user) {
+          clearStoredToken()
+          clearStoredUser()
           setToken(null)
           setUser(null)
-        } else {
-          // Токен валидный - получаем данные пользователя с СЕРВЕРА
-          const data = JSON.parse(result.text)
-          console.log('User data from server:', data.user)
-          setToken(storedToken)
-          setUser(data.user)
-          // Загружаем список чатов
-          loadChats(storedToken)
+          return
         }
-      } catch (err) {
-        console.error('Token validation error:', err)
-        // НЕ удаляем токен при ошибке соединения - оставляем пользователя залогиненным
-        // Просто показываем что валидация не удалась
-        if (storedToken) {
+
+        setStoredUser(data.user)
+        setToken(storedToken)
+        setUser(data.user)
+        await loadChats(storedToken)
+      } catch (error) {
+        console.error('Token validation error:', error)
+
+        if (storedUser) {
           setToken(storedToken)
-          // Пытаемся загрузить данные из кеша или показать оффлайн режим
+          setUser(storedUser)
+        } else {
+          clearStoredToken()
+          clearStoredUser()
         }
       } finally {
         setIsValidating(false)
       }
     }
 
-    validateToken()
+    void validateToken()
   }, [])
 
-  const loadChats = async (authToken?: string) => {
-    try {
-      const lightAPI = (window as any).lightAPI
-      const tkn = authToken || token
-      if (!tkn) return
-      
-      // Используем новый /api/sync endpoint - получаем все данные одним запросом
-      const result = await lightAPI.fetch('http://155.212.167.68:80/api/sync', {
-        headers: { 'Authorization': `Bearer ${tkn}` }
-      })
-      
-      if (result.ok) {
-        const data = JSON.parse(result.text)
-        console.log('[App] Synced data:', data)
-        setChats(data.chats)
-        setUserStatuses(data.userStatuses)
-      }
-    } catch (err) {
-      console.error('Load chats error:', err)
+  useEffect(() => {
+    if (!token) {
+      return
     }
-  }
 
-  const handleChatCreated = (chat: any) => {
-    // Проверяем что чата еще нет в списке
-    const exists = chats.find(c => c.id === chat.id)
-    if (!exists) {
-      setChats(prev => [chat, ...prev])
+    const socket = connectSocket(token)
+
+    const handleMessageNew = (message: { chatId: string; text: string; createdAt: number; senderId: string }) => {
+      setChats((previousChats) => moveChatToTop(previousChats, message.chatId, (chat) => {
+        const isOwnMessage = message.senderId === currentUserIdRef.current
+        const isCurrentChat = selectedChatIdRef.current === message.chatId
+
+        return {
+          ...chat,
+          last_message: message.text,
+          last_message_time: Math.floor(message.createdAt / 1000),
+          unread: isOwnMessage || isCurrentChat ? 0 : chat.unread + 1
+        }
+      }))
     }
+
+    const handleChatCreated = (chat: ChatSummary) => {
+      setChats((previousChats) => previousChats.some((item) => item.id === chat.id) ? previousChats : [chat, ...previousChats])
+    }
+
+    const handleUserOnline = ({ userId, lastSeen }: { userId: string; lastSeen: number }) => {
+      setUserStatuses((previous) => ({
+        ...previous,
+        [userId]: { status: 'online', lastSeen }
+      }))
+    }
+
+    const handleUserOffline = ({ userId, lastSeen }: { userId: string; lastSeen: number }) => {
+      setUserStatuses((previous) => ({
+        ...previous,
+        [userId]: { status: 'recently', lastSeen }
+      }))
+    }
+
+    const handleMessagesRead = ({ chatId, userId }: { chatId: string; userId: string }) => {
+      if (userId !== currentUserIdRef.current) {
+        return
+      }
+
+      setChats((previousChats) => previousChats.map((chat) =>
+        chat.id === chatId ? { ...chat, unread: 0 } : chat
+      ))
+    }
+
+    const handleMessageDeleted = () => {
+      void loadChats(token)
+    }
+
+    const handleReconnect = () => {
+      void loadChats(token)
+    }
+
+    socket.on('message:new', handleMessageNew)
+    socket.on('chat:created', handleChatCreated)
+    socket.on('user:online', handleUserOnline)
+    socket.on('user:offline', handleUserOffline)
+    socket.on('messages:read', handleMessagesRead)
+    socket.on('message:deleted', handleMessageDeleted)
+    window.addEventListener('socket:reconnect', handleReconnect)
+
+    void loadChats(token)
+
+    const statusInterval = window.setInterval(() => {
+      const now = Date.now()
+
+      setUserStatuses((previous) => {
+        const updated: Record<string, UserStatus> = { ...previous }
+
+        for (const [userId, status] of Object.entries(updated)) {
+          const elapsed = now - status.lastSeen
+
+          if (elapsed > 10_000 && elapsed < 300_000) {
+            updated[userId] = { ...status, status: 'recently' }
+          } else if (elapsed >= 300_000) {
+            updated[userId] = { ...status, status: 'offline' }
+          }
+        }
+
+        return updated
+      })
+    }, 5000)
+
+    return () => {
+      window.clearInterval(statusInterval)
+      window.removeEventListener('socket:reconnect', handleReconnect)
+      socket.off('message:new', handleMessageNew)
+      socket.off('chat:created', handleChatCreated)
+      socket.off('user:online', handleUserOnline)
+      socket.off('user:offline', handleUserOffline)
+      socket.off('messages:read', handleMessagesRead)
+      socket.off('message:deleted', handleMessageDeleted)
+    }
+  }, [token])
+
+  const handleChatCreated = (chat: ChatSummary) => {
+    setChats((previousChats) => previousChats.some((item) => item.id === chat.id) ? previousChats : [chat, ...previousChats])
     setSelectedChatId(chat.id)
   }
 
   const handleChatDeleted = (chatId: string) => {
-    setChats(prev => prev.filter(c => c.id !== chatId))
+    setChats((previousChats) => previousChats.filter((chat) => chat.id !== chatId))
+    setMessagesCache((previousCache) => {
+      const nextCache = { ...previousCache }
+      delete nextCache[chatId]
+      return nextCache
+    })
+
     if (selectedChatId === chatId) {
       setSelectedChatId(null)
     }
   }
 
-  useEffect(() => {
-    if (token) {
-      connectSocket(token)
-      // Загружаем чаты сразу после подключения socket
-      loadChats()
-      
-      // Подписываемся на обновления чатов через socket
-      const socket = (window as any).socket
-      if (socket) {
-        // Новое сообщение - обновляем превью
-        socket.on('message:new', (msg: any) => {
-          // Обновляем только превью последнего сообщения в списке чатов
-          setChats(prev => prev.map(chat => {
-            if (chat.id === msg.chatId) {
-              return {
-                ...chat,
-                last_message: msg.text,
-                last_message_time: Math.floor(msg.createdAt / 1000)
-              }
-            }
-            return chat
-          }))
-        })
-        
-        // Новый чат создан - добавляем в список
-        socket.on('chat:created', (chat: any) => {
-          console.log('New chat created:', chat)
-          setChats(prev => {
-            // Проверяем что чата еще нет
-            if (prev.some(c => c.id === chat.id)) {
-              return prev
-            }
-            return [chat, ...prev]
-          })
-        })
-        
-        // Отслеживаем онлайн статус
-        socket.on('user:online', ({ userId, lastSeen }: { userId: string; lastSeen: number }) => {
-          console.log('User online:', userId)
-          setUserStatuses(prev => ({
-            ...prev,
-            [userId]: { status: 'online', lastSeen }
-          }))
-        })
-        
-        socket.on('user:offline', ({ userId, lastSeen }: { userId: string; lastSeen: number }) => {
-          console.log('User offline:', userId)
-          setUserStatuses(prev => ({
-            ...prev,
-            [userId]: { status: 'recently', lastSeen }
-          }))
-        })
-        
-        // Обновляем счетчик непрочитанных при прочтении
-        socket.on('messages:read', ({ chatId }: { chatId: string }) => {
-          setChats(prev => prev.map(chat => 
-            chat.id === chatId ? { ...chat, unread: 0 } : chat
-          ))
-        })
-      }
-      
-      // Обновляем статусы каждые 5 секунд
-      const statusInterval = setInterval(() => {
-        const now = Date.now()
-        setUserStatuses(prev => {
-          const updated = { ...prev }
-          Object.keys(updated).forEach(userId => {
-            const timeSince = now - updated[userId].lastSeen
-            if (timeSince > 10000 && timeSince < 300000) {
-              updated[userId].status = 'recently'
-            } else if (timeSince >= 300000) {
-              updated[userId].status = 'offline'
-            }
-          })
-          return updated
-        })
-      }, 5000)
-      
-      return () => clearInterval(statusInterval)
-    }
-  }, [token])
-
-  const handleLogin = (t: string, u: AuthUser) => {
-    // Сохраняем ТОЛЬКО токен в localStorage
-    localStorage.setItem('light-token', t)
-    
-    console.log('Login successful, user from server:', u)
-    setToken(t)
-    setUser(u)
+  const handleLogin = (nextToken: string, nextUser: AuthUser) => {
+    setStoredToken(nextToken)
+    setStoredUser(nextUser)
+    setToken(nextToken)
+    setUser(nextUser)
     setSelectedChatId(null)
     setChats([])
-    
-    // Переподключаем socket с новым токеном
-    const oldSocket = (window as any).socket
-    if (oldSocket) {
-      oldSocket.disconnect()
-    }
-    connectSocket(t)
+    setUserStatuses({})
+    setMessagesCache({})
   }
 
   const handleLogout = () => {
-    // Очищаем ТОЛЬКО токен
-    localStorage.removeItem('light-token')
-    
-    // Отключаем socket
-    const socket = (window as any).socket
-    if (socket) {
-      socket.disconnect()
-      ;(window as any).socket = null
-    }
-    
+    clearStoredToken()
+    clearStoredUser()
+    disconnectSocket()
     setToken(null)
     setUser(null)
     setSelectedChatId(null)
     setChats([])
+    setUserStatuses({})
+    setMessagesCache({})
   }
 
-  const handleMessagesLoaded = (chatId: string, messages: any[]) => {
-    setMessagesCache(prev => ({
-      ...prev,
+  const handleMessagesLoaded = (chatId: string, messages: Message[]) => {
+    setMessagesCache((previousCache) => ({
+      ...previousCache,
       [chatId]: messages
     }))
   }
 
   const handleUpdateProfile = async (displayName: string, username: string, avatar: string | null) => {
-    // Обновляем состояние локально
-    setUser({ ...user!, displayName, username, avatar })
+    if (!user) {
+      return
+    }
+
+    const updatedUser: AuthUser = {
+      ...user,
+      displayName,
+      username,
+      avatar
+    }
+
+    setUser(updatedUser)
+    setStoredUser(updatedUser)
   }
+
+  const selectedChat = chats.find((chat) => chat.id === selectedChatId) ?? null
 
   if (isValidating) {
     return (
       <ThemeProvider>
         <ToastProvider>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: 'var(--bg)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: 'var(--bg-wallpaper)' }}>
             <span style={{ color: 'var(--text-primary)' }}>Загрузка...</span>
           </div>
         </ToastProvider>
@@ -265,8 +328,8 @@ export default function App() {
         <div className="app">
           <TitleBar username={user.displayName} />
           <div className="app-body">
-            <Sidebar 
-              selectedChatId={selectedChatId} 
+            <Sidebar
+              selectedChatId={selectedChatId}
               onSelectChat={setSelectedChatId}
               currentUser={user}
               onLogout={handleLogout}
@@ -278,22 +341,21 @@ export default function App() {
               userStatuses={userStatuses}
             />
             <main className="main">
-              {selectedChatId ? (
+              {selectedChat ? (
                 <ChatWindow
-                  chatId={selectedChatId}
-                  chatName={chats.find(c => c.id === selectedChatId)?.name || 'Чат'}
-                  isOnline={userStatuses[chats.find(c => c.id === selectedChatId)?.otherUserId || '']?.status === 'online'}
-                  userStatus={userStatuses[chats.find(c => c.id === selectedChatId)?.otherUserId || '']}
-                  onMessageSent={() => {}}
+                  chatId={selectedChat.id}
+                  chatName={selectedChat.name || 'Чат'}
+                  isOnline={userStatuses[selectedChat.otherUserId || '']?.status === 'online'}
+                  userStatus={selectedChat.otherUserId ? userStatuses[selectedChat.otherUserId] : undefined}
                   currentUserId={user.id}
                   token={token}
-                  cachedMessages={messagesCache[selectedChatId]}
+                  cachedMessages={messagesCache[selectedChat.id]}
                   onMessagesLoaded={handleMessagesLoaded}
                 />
               ) : (
                 <div className="empty-state">
                   <span className="empty-icon">☀</span>
-                  <p>Выберите чат чтобы начать общение</p>
+                  <p>Выберите чат, чтобы начать общение</p>
                 </div>
               )}
             </main>
