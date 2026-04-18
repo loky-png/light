@@ -632,9 +632,9 @@ io.on('connection', (socket) => {
       WHERE chat_id = ? AND sender_id != ? AND read = 0
     `).run(chatId, user.id)
 
-    console.log(`[messages:read] User ${user.id} read ${result.changes} messages in chat ${chatId}`)
-
-    io.to(chatId).emit('messages:read', { chatId, userId: user.id })
+    if (result.changes > 0) {
+      io.to(chatId).emit('messages:read', { chatId, userId: user.id })
+    }
   })
 
   socket.on('message:send', ({ chatId, text, replyTo }: { chatId: string; text: string; replyTo?: ReplyPayload }) => {
