@@ -135,26 +135,26 @@
 
 .online-dot {
   position: absolute;
-  bottom: -2px;
-  right: -2px;
-  width: 14px;
-  height: 14px;
+  bottom: 0px;
+  right: 0px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
   background: var(--online);
-  border: 2.5px solid var(--glass-bg-strong);
-  box-shadow: 0 0 8px var(--online);
+  border: 2px solid var(--glass-bg-strong);
+  box-shadow: 0 0 6px var(--online);
   z-index: 2;
 }
 
 .offline-dot {
   position: absolute;
-  bottom: -2px;
-  right: -2px;
-  width: 14px;
-  height: 14px;
+  bottom: 0px;
+  right: 0px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
-  background: #6c757d;
-  border: 2.5px solid var(--glass-bg-strong);
+  background: #8b92a0;
+  border: 2px solid var(--glass-bg-strong);
   z-index: 2;
 }
 

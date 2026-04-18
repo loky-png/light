@@ -1,5 +1,7 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
+import { requestJson } from '../api/http'
+import { getSocket } from '../api/socket'
 import { useToast } from '../context/ToastContext'
 import type { Message } from '../types'
 import './ChatWindow.css'
@@ -12,15 +14,47 @@ interface ChatWindowProps {
   onMessageSent?: () => void
   currentUserId: string
   token: string
-  cachedMessages?: any[]
-  onMessagesLoaded?: (chatId: string, messages: any[]) => void
+  cachedMessages?: Message[]
+  onMessagesLoaded?: (chatId: string, messages: Message[]) => void
 }
 
 function formatTime(date: Date): string {
   return date.toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' })
 }
 
-export default function ChatWindow({ chatId, chatName, isOnline, userStatus, onMessageSent, currentUserId, token, cachedMessages, onMessagesLoaded }: ChatWindowProps) {
+interface RawMessage {
+  id: string
+  chat_id: string
+  sender_id: string
+  text: string
+  created_at: number
+  read: number
+  reply_to?: {
+    id: string
+    senderId: string
+    senderName: string
+    text: string
+  } | null
+}
+
+function mapRawMessage(m: RawMessage): Message {
+  return {
+    id: m.id,
+    chatId: m.chat_id,
+    senderId: m.sender_id,
+    text: m.text,
+    createdAt: new Date(m.created_at * 1000),
+    read: m.read === 1,
+    replyTo: m.reply_to ?? undefined
+  }
+}
+
+const MAX_MESSAGE_LENGTH = 1000
+
+export default function ChatWindow({
+  chatId, chatName, isOnline, userStatus, onMessageSent,
+  currentUserId, token, cachedMessages, onMessagesLoaded
+}: ChatWindowProps) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(true)
@@ -31,59 +65,64 @@ export default function ChatWindow({ chatId, chatName, isOnline, userStatus, onM
   const userId = currentUserId
   const toast = useToast()
 
-  console.log('ChatWindow userId:', userId)
-  
   const getStatusText = () => {
     if (!userStatus) return 'не в сети'
-    
     if (userStatus.status === 'online') return 'в сети'
     if (userStatus.status === 'recently') return 'был(а) недавно'
     return 'не в сети'
   }
 
+  // FIX: единственная loadMessages через useCallback
+  // Удалена дублирующая функция с хардкодным IP и window.lightAPI.fetch
+  const loadMessages = useCallback(async () => {
+    setLoading(true)
+    try {
+      const msgs = await requestJson<RawMessage[]>(`/api/chats/${chatId}/messages`, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      const mapped = msgs.map(mapRawMessage)
+      setMessages(mapped)
+      onMessagesLoaded?.(chatId, mapped)
+    } catch (err) {
+      console.error('Load messages error:', err)
+      toast.error('Не удалось загрузить сообщения')
+    } finally {
+      setLoading(false)
+    }
+  }, [chatId, token, onMessagesLoaded, toast])
+
+  // FIX: добавлены все реальные зависимости в deps
   useEffect(() => {
-    console.log('[ChatWindow] Effect triggered for chatId:', chatId, 'cachedMessages:', cachedMessages?.length)
-    
-    // Проверяем есть ли кешированные сообщения
     if (cachedMessages && cachedMessages.length > 0) {
-      console.log('[ChatWindow] Using cached messages:', cachedMessages.length)
       setMessages(cachedMessages)
       setLoading(false)
-      
-      // Прокручиваем вниз
       setTimeout(() => {
         bottomRef.current?.scrollIntoView({ behavior: 'auto' })
       }, 0)
     } else {
-      console.log('[ChatWindow] No cache, loading from server')
-      // Очищаем сообщения при смене чата
       setMessages([])
       setLoading(true)
-      
-      loadMessages()
+      void loadMessages()
     }
-    
-    // Подписываемся на новые сообщения
-    const socket = (window as any).socket
+
+    // FIX: используем getSocket() вместо (window as any).socket
+    const socket = getSocket()
     if (!socket) return
-    
-    const handleNewMessage = (msg: any) => {
-      console.log('[ChatWindow] New message received:', msg, 'current chatId:', chatId)
-      // КРИТИЧНО: проверяем что сообщение для ЭТОГО чата
-      if (msg.chatId !== chatId) {
-        console.log('[ChatWindow] Message for different chat, ignoring')
-        return
-      }
-      
-      // Добавляем сообщение в список
+
+    const handleNewMessage = (msg: {
+      id: string
+      chatId: string
+      senderId: string
+      text: string
+      createdAt: number
+      read: boolean
+      replyTo?: Message['replyTo']
+    }) => {
+      if (msg.chatId !== chatId) return
+
       setMessages(prev => {
-        // Проверяем что сообщение еще не добавлено (защита от дублей)
-        if (prev.some(m => m.id === msg.id)) {
-          console.log('[ChatWindow] Message already exists, skipping')
-          return prev
-        }
-        console.log('[ChatWindow] Adding message to chat')
-        const newMessages = [...prev, {
+        if (prev.some(m => m.id === msg.id)) return prev
+        const newMessages: Message[] = [...prev, {
           id: msg.id,
           chatId: msg.chatId,
           senderId: msg.senderId,
@@ -92,174 +131,97 @@ export default function ChatWindow({ chatId, chatName, isOnline, userStatus, onM
           read: msg.read || false,
           replyTo: msg.replyTo
         }]
-        
-        // Обновляем кеш
-        if (onMessagesLoaded) {
-          onMessagesLoaded(chatId, newMessages)
-        }
-        
+        onMessagesLoaded?.(chatId, newMessages)
         return newMessages
       })
-      
-      // Автоматически помечаем как прочитанное если чат открыт
+
       setTimeout(() => {
         if (socket.connected) {
           socket.emit('messages:read', { chatId: msg.chatId })
         }
       }, 500)
     }
-    
-    const handleMessagesRead = ({ chatId: readChatId, userId: readUserId }: any) => {
-      console.log('[ChatWindow] Messages read:', { readChatId, readUserId, currentChatId: chatId, currentUserId: userId })
-      // КРИТИЧНО: проверяем что это для ЭТОГО чата
-      if (readChatId !== chatId) {
-        return
-      }
-      
+
+    const handleMessagesRead = ({ chatId: readChatId, userId: readUserId }: { chatId: string; userId: string }) => {
+      if (readChatId !== chatId) return
       if (readUserId !== userId) {
-        // Помечаем наши сообщения как прочитанные
-        setMessages(prev => prev.map(msg => 
+        setMessages(prev => prev.map(msg =>
           msg.senderId === userId ? { ...msg, read: true } : msg
         ))
       }
     }
-    
-    const handleMessageDeleted = ({ messageId, forEveryone }: { messageId: string; forEveryone: boolean }) => {
-      console.log('[ChatWindow] Message deleted:', { messageId, forEveryone })
-      // Удаляем только если сообщение в текущем списке
+
+    const handleMessageDeleted = ({ messageId }: { messageId: string; forEveryone: boolean }) => {
       setMessages(prev => {
-        const messageExists = prev.some(m => m.id === messageId)
-        if (!messageExists) return prev
-        
-        // Добавляем класс для анимации удаления
-        const messageElement = messagesRef.current[messageId]
-        if (messageElement) {
-          messageElement.classList.add('deleting')
-          // Удаляем из списка после анимации
+        if (!prev.some(m => m.id === messageId)) return prev
+        const el = messagesRef.current[messageId]
+        if (el) {
+          el.classList.add('deleting')
           setTimeout(() => {
             setMessages(p => p.filter(msg => msg.id !== messageId))
           }, 200)
           return prev
-        } else {
-          // Если элемента нет, удаляем сразу
-          return prev.filter(msg => msg.id !== messageId)
         }
+        return prev.filter(msg => msg.id !== messageId)
       })
     }
-    
-    // ВАЖНО: НЕ удаляем все обработчики, только для этого чата
-    // Создаем уникальные обработчики с привязкой к chatId
-    
+
     socket.on('message:new', handleNewMessage)
     socket.on('messages:read', handleMessagesRead)
     socket.on('message:deleted', handleMessageDeleted)
-    
-    console.log('[ChatWindow] Subscribed to chat:', chatId)
-    
-    // Помечаем сообщения как прочитанные при открытии чата
+
     if (socket.connected) {
       socket.emit('messages:read', { chatId })
     }
-    
+
     return () => {
-      console.log('[ChatWindow] Unsubscribing from chat:', chatId)
-      // Отписываемся ТОЛЬКО от обработчиков этого чата
       socket.off('message:new', handleNewMessage)
       socket.off('messages:read', handleMessagesRead)
       socket.off('message:deleted', handleMessageDeleted)
     }
-  }, [chatId, userId, cachedMessages])
+  }, [chatId, userId, cachedMessages, loadMessages, onMessagesLoaded])
 
   useEffect(() => {
-    // Мгновенный скролл вниз без анимации
     bottomRef.current?.scrollIntoView({ behavior: 'auto' })
   }, [messages.length])
-
-  const loadMessages = async () => {
-    setLoading(true)
-    try {
-      const lightAPI = (window as any).lightAPI
-      const result = await lightAPI.fetch(`http://155.212.167.68:80/api/chats/${chatId}/messages`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      })
-      
-      if (result.ok) {
-        const msgs = JSON.parse(result.text)
-        console.log('Loaded messages from server:', msgs)
-        const mapped = msgs.map((m: any) => ({
-          id: m.id,
-          chatId: m.chat_id,
-          senderId: m.sender_id,
-          text: m.text,
-          createdAt: new Date(m.created_at * 1000),
-          read: m.read === 1,
-          replyTo: m.reply_to ? {
-            id: m.reply_to.id,
-            senderId: m.reply_to.senderId,
-            senderName: m.reply_to.senderName,
-            text: m.reply_to.text
-          } : undefined
-        }))
-        console.log('Mapped messages:', mapped)
-        console.log('Current userId:', userId)
-        setMessages(mapped)
-        
-        // Сохраняем в кеш
-        if (onMessagesLoaded) {
-          onMessagesLoaded(chatId, mapped)
-        }
-      } else {
-        console.error('Failed to load messages:', result.status, result.text)
-        toast.error('Не удалось загрузить сообщения')
-      }
-    } catch (err) {
-      console.error('Load messages error:', err)
-      toast.error('Ошибка загрузки сообщений')
-    } finally {
-      setLoading(false)
-    }
-  }
 
   const sendMessage = async () => {
     const text = input.trim()
     if (!text) return
-    
-    // Проверяем лимит символов НА КЛИЕНТЕ
-    if (text.length > 1000) {
-      toast.error('Сообщение слишком длинное. Максимум 1000 символов.')
+
+    if (text.length > MAX_MESSAGE_LENGTH) {
+      toast.error(`Сообщение слишком длинное. Максимум ${MAX_MESSAGE_LENGTH} символов.`)
       return
     }
-    
+
+    // FIX: используем getSocket() вместо (window as any).socket
+    const socket = getSocket()
+
+    // FIX: убрана дублирующая проверка (if socket && socket.connected) внутри
+    if (!socket || !socket.connected) {
+      toast.error('Нет соединения с сервером. Проверьте интернет.')
+      return
+    }
+
     try {
-      const socket = (window as any).socket
-      console.log('Sending message, socket:', !!socket, 'connected:', socket?.connected)
-      
-      if (!socket || !socket.connected) {
-        toast.error('Нет соединения с сервером. Проверьте интернет.')
-        return
-      }
-      
-      if (socket && socket.connected) {
-        const messageData: any = { chatId, text }
-        
-        // Добавляем информацию об ответе если есть
-        if (replyTo) {
-          messageData.replyTo = {
-            id: replyTo.id,
-            senderId: replyTo.senderId,
-            text: replyTo.text
-          }
-        }
-        
-        socket.emit('message:send', messageData)
-        setInput('')
-        setReplyTo(null)
-        console.log('Message sent:', messageData)
-        
-        if (onMessageSent) {
-          onMessageSent()
+      const messageData: {
+        chatId: string
+        text: string
+        replyTo?: { id: string; senderId: string; text: string }
+      } = { chatId, text }
+
+      if (replyTo) {
+        messageData.replyTo = {
+          id: replyTo.id,
+          senderId: replyTo.senderId,
+          text: replyTo.text
         }
       }
+
+      socket.emit('message:send', messageData)
+      setInput('')
+      setReplyTo(null)
+      onMessageSent?.()
     } catch (err) {
       console.error('Send message error:', err)
       toast.error('Ошибка отправки сообщения')
@@ -268,48 +230,27 @@ export default function ChatWindow({ chatId, chatName, isOnline, userStatus, onM
 
   const handleMessageContextMenu = (e: React.MouseEvent, message: Message) => {
     e.preventDefault()
-    
-    // Получаем размеры окна
+
     const windowWidth = window.innerWidth
     const windowHeight = window.innerHeight
-    
-    // Примерные размеры меню
     const menuWidth = 200
     const menuHeight = message.senderId === userId ? 250 : 150
-    
-    // Используем clientX/clientY для fixed позиционирования
+
     let x = e.clientX
     let y = e.clientY
-    
-    // Проверяем правую границу - показываем слева от курсора
-    if (x + menuWidth > windowWidth) {
-      x = x - menuWidth
-    }
-    
-    // Проверяем нижнюю границу
-    if (y + menuHeight > windowHeight) {
-      y = windowHeight - menuHeight - 10
-    }
-    
-    // Проверяем левую границу
-    if (x < 10) {
-      x = 10
-    }
-    
-    // Проверяем верхнюю границу
-    if (y < 10) {
-      y = 10
-    }
-    
+
+    if (x + menuWidth > windowWidth) x = x - menuWidth
+    if (y + menuHeight > windowHeight) y = windowHeight - menuHeight - 10
+    if (x < 10) x = 10
+    if (y < 10) y = 10
+
     setContextMenu({ messageId: message.id, x, y })
   }
 
   const handleReply = () => {
     if (contextMenu) {
       const message = messages.find(m => m.id === contextMenu.messageId)
-      if (message) {
-        setReplyTo(message)
-      }
+      if (message) setReplyTo(message)
       setContextMenu(null)
     }
   }
@@ -317,21 +258,20 @@ export default function ChatWindow({ chatId, chatName, isOnline, userStatus, onM
   const handleCopyMessage = () => {
     if (contextMenu) {
       const message = messages.find(m => m.id === contextMenu.messageId)
-      if (message) {
-        navigator.clipboard.writeText(message.text)
-      }
+      if (message) navigator.clipboard.writeText(message.text)
       setContextMenu(null)
     }
   }
 
   const handleDeleteMessage = (forEveryone: boolean) => {
     if (contextMenu) {
-      const socket = (window as any).socket
+      // FIX: используем getSocket()
+      const socket = getSocket()
       if (socket && socket.connected) {
-        socket.emit('message:delete', { 
-          chatId, 
+        socket.emit('message:delete', {
+          chatId,
           messageId: contextMenu.messageId,
-          forEveryone 
+          forEveryone
         })
       }
       setContextMenu(null)
@@ -350,9 +290,12 @@ export default function ChatWindow({ chatId, chatName, isOnline, userStatus, onM
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
-      sendMessage()
+      void sendMessage()
     }
   }
+
+  const inputLength = input.length
+  const isOverLimit = inputLength > MAX_MESSAGE_LENGTH
 
   return (
     <div className="chat-window">
@@ -374,24 +317,24 @@ export default function ChatWindow({ chatId, chatName, isOnline, userStatus, onM
             <span style={{ fontSize: '13px' }}>Напишите первое сообщение</span>
           </div>
         ) : (
+          // FIX: убран console.log внутри render (вызывался при каждой перерисовке для каждого сообщения)
           messages.map((msg, i) => {
             const isOut = msg.senderId === userId
-            console.log('Message:', msg.id, 'senderId:', msg.senderId, 'userId:', userId, 'isOut:', isOut)
             const nextMsg = messages[i + 1]
             const showTail = !nextMsg || nextMsg.senderId !== msg.senderId
             const prevMsg = messages[i - 1]
             const isFirstInGroup = !prevMsg || prevMsg.senderId !== msg.senderId
             return (
-              <div 
-                key={msg.id} 
+              <div
+                key={msg.id}
                 ref={el => { if (el) messagesRef.current[msg.id] = el }}
                 className={`message ${isOut ? 'out' : 'in'} ${showTail ? 'tail' : ''} ${isFirstInGroup ? 'first-in-group' : ''}`}
                 onContextMenu={(e) => handleMessageContextMenu(e, msg)}
               >
                 <div className="message-bubble">
                   {msg.replyTo && (
-                    <div 
-                      className="message-reply" 
+                    <div
+                      className="message-reply"
                       onClick={() => scrollToMessage(msg.replyTo!.id)}
                     >
                       <div className="message-reply-line" />
@@ -417,15 +360,15 @@ export default function ChatWindow({ chatId, chatName, isOnline, userStatus, onM
       </div>
 
       {contextMenu && createPortal(
-        <div 
-          className="message-context-menu" 
+        <div
+          className="message-context-menu"
           style={{ top: contextMenu.y, left: contextMenu.x }}
           onClick={(e) => e.stopPropagation()}
         >
           {(() => {
             const msg = messages.find(m => m.id === contextMenu.messageId)
             const isOwnMessage = msg?.senderId === userId
-            
+
             return (
               <>
                 <button className="context-menu-item" onClick={handleReply}>
@@ -502,13 +445,24 @@ export default function ChatWindow({ chatId, chatName, isOnline, userStatus, onM
         <div className="chat-input-wrapper">
           <input
             type="text"
-            className="chat-input"
+            className={`chat-input${isOverLimit ? ' input-error' : ''}`}
             placeholder="Написать сообщение..."
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
           />
-          <button className="send-btn" onClick={sendMessage} disabled={!input.trim()} aria-label="Отправить">
+          {/* IMPROVEMENT: счётчик символов при приближении к лимиту */}
+          {inputLength > MAX_MESSAGE_LENGTH * 0.8 && (
+            <span className={`char-counter${isOverLimit ? ' over-limit' : ''}`}>
+              {inputLength}/{MAX_MESSAGE_LENGTH}
+            </span>
+          )}
+          <button
+            className="send-btn"
+            onClick={() => void sendMessage()}
+            disabled={!input.trim() || isOverLimit}
+            aria-label="Отправить"
+          >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
               <path d="M22 2L11 13" stroke="white" strokeWidth="2" strokeLinecap="round"/>
               <path d="M22 2L15 22L11 13L2 9L22 2Z" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>

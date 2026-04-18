@@ -10,14 +10,14 @@ function resolveUrl(pathOrUrl: string): string {
   if (/^https?:\/\//i.test(pathOrUrl)) {
     return pathOrUrl
   }
-
   return `${API_URL}${pathOrUrl.startsWith('/') ? pathOrUrl : `/${pathOrUrl}`}`
 }
 
 export async function requestRaw(pathOrUrl: string, options: RequestInit = {}): Promise<RawResponse> {
   const url = resolveUrl(pathOrUrl)
 
-  const lightAPI = (window as any).lightAPI
+  // Поддержка Electron: используем lightAPI.fetch если доступен
+  const lightAPI = (window as { lightAPI?: { fetch: (url: string, options: RequestInit) => Promise<RawResponse> } }).lightAPI
   if (lightAPI?.fetch) {
     return lightAPI.fetch(url, options)
   }
@@ -32,12 +32,13 @@ export async function requestRaw(pathOrUrl: string, options: RequestInit = {}): 
 
 export async function requestJson<T>(pathOrUrl: string, options: RequestInit = {}): Promise<T> {
   const response = await requestRaw(pathOrUrl, options)
-  const payload = response.text ? JSON.parse(response.text) : null
+  const payload = response.text ? (JSON.parse(response.text) as unknown) : null
 
   if (!response.ok) {
-    const errorMessage = payload && typeof payload.error === 'string'
-      ? payload.error
-      : `Request failed (${response.status})`
+    const errorMessage =
+      payload && typeof (payload as { error?: string }).error === 'string'
+        ? (payload as { error: string }).error
+        : `Request failed (${response.status})`
     throw new Error(errorMessage)
   }
 

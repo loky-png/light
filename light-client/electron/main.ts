@@ -3,36 +3,40 @@ import path from 'path'
 import axios from 'axios'
 import { autoUpdater } from 'electron-updater'
 
-// Настройка автообновления
+// FIX: URL обновлений из переменной окружения, не хардкод
+const SERVER_URL = process.env.SERVER_URL ?? 'http://155.212.167.68:80'
+
 autoUpdater.setFeedURL({
   provider: 'generic',
-  url: 'http://155.212.167.68:80/updates/'
+  url: `${SERVER_URL}/updates/`
 })
 
 autoUpdater.autoDownload = false
 autoUpdater.autoInstallOnAppQuit = true
 
-// НЕ создаем уникальный ID - используем общую папку для сохранения данных
-// Это позволит сохранять токен между запусками приложения
-
-async function httpRequest(url: string, options: RequestInit): Promise<{ok: boolean, status: number, text: string}> {
+async function httpRequest(
+  url: string,
+  options: RequestInit
+): Promise<{ ok: boolean; status: number; text: string }> {
   try {
-    console.log('[Main] Axios request:', url, options.method)
     const response = await axios({
       url,
-      method: options.method as any || 'GET',
-      data: options.body ? JSON.parse(options.body as string) : undefined,
-      headers: options.headers as any,
+      method: (options.method as string) || 'GET',
+      data: options.body ? (JSON.parse(options.body as string) as unknown) : undefined,
+      headers: options.headers as Record<string, string>,
       timeout: 10000,
     })
-    console.log('[Main] Response:', response.status, response.data)
     return { ok: true, status: response.status, text: JSON.stringify(response.data) }
-  } catch (error: any) {
-    if (error.response) {
-      console.log('[Main] Error response:', error.response.status, error.response.data)
-      return { ok: false, status: error.response.status, text: JSON.stringify(error.response.data) }
+  } catch (error: unknown) {
+    const axiosError = error as { response?: { status: number; data: unknown }; message: string }
+    if (axiosError.response) {
+      return {
+        ok: false,
+        status: axiosError.response.status,
+        text: JSON.stringify(axiosError.response.data)
+      }
     }
-    console.error('[Main] Request failed:', error.message)
+    console.error('[Main] Request failed:', axiosError.message)
     throw error
   }
 }
@@ -50,95 +54,59 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.js'),
-      webSecurity: false,
+      // FIX: webSecurity включён — отключение было серьёзной уязвимостью
+      webSecurity: true,
     },
   })
 
-  // Отключаем анимацию ресайза для плавности
   win.setBackgroundColor('#17212b')
-
   win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'))
-  
-  // Всегда открываем DevTools
-  win.webContents.openDevTools({ mode: 'detach' })
 
-  // Проверка обновлений при запуске
+  // FIX: DevTools открываются только в режиме разработки
+  if (process.env.NODE_ENV === 'development') {
+    win.webContents.openDevTools({ mode: 'detach' })
+  }
+
   setTimeout(() => {
     autoUpdater.checkForUpdates().catch(err => {
       console.log('Update check failed:', err)
     })
   }, 3000)
 
-  // События автообновления
   autoUpdater.on('update-available', (info) => {
-    console.log('Update available:', info.version)
     win.webContents.send('update-available', info)
   })
 
-  autoUpdater.on('update-not-available', () => {
-    console.log('No updates available')
-  })
-
   autoUpdater.on('download-progress', (progress) => {
-    console.log('Download progress:', progress.percent)
     win.webContents.send('download-progress', progress)
   })
 
   autoUpdater.on('update-downloaded', (info) => {
-    console.log('Update downloaded:', info.version)
     win.webContents.send('update-downloaded', info)
   })
 
   autoUpdater.on('error', (err) => {
     console.error('Update error:', err)
-    // Не крашим приложение при ошибке обновления
   })
 
-  // IPC для управления обновлениями
-  ipcMain.on('download-update', () => {
-    autoUpdater.downloadUpdate()
-  })
-
-  ipcMain.on('install-update', () => {
-    autoUpdater.quitAndInstall(false, true)
-  })
-
+  ipcMain.on('download-update', () => { autoUpdater.downloadUpdate() })
+  ipcMain.on('install-update', () => { autoUpdater.quitAndInstall(false, true) })
   ipcMain.on('window-minimize', () => win.minimize())
   ipcMain.on('window-maximize', () => win.isMaximized() ? win.unmaximize() : win.maximize())
   ipcMain.on('window-close', () => win.close())
 
-  // Проксируем HTTP запросы через main process
+  // HTTP прокси для Electron (обход ограничений CORS/WebSecurity)
   ipcMain.handle('fetch', async (_event, url: string, options: RequestInit) => {
     try {
-      console.log('Fetching:', url)
-      const result = await httpRequest(url, options)
-      console.log('Response:', result.status, result.text.slice(0, 100))
-      return result
+      return await httpRequest(url, options)
     } catch (e) {
       console.error('Fetch error:', e)
       throw e
     }
   })
 
-  // Обновление профиля
-  ipcMain.handle('update-profile', async (_event, token: string, data: { displayName: string; username: string; avatar: string | null }) => {
-    try {
-      const url = 'http://155.212.167.68:80/api/profile'
-      console.log('[Main] Update profile:', url, data.displayName, data.username)
-      const result = await httpRequest(url, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(data)
-      })
-      return result
-    } catch (e) {
-      console.error('[Main] Profile update error:', e)
-      throw e
-    }
-  })
+  // FIX: убран дублирующий IPC-обработчик update-profile
+  // (профиль обновляется через стандартный ipcMain.handle('fetch', ...))
 }
 
 app.whenReady().then(createWindow)
