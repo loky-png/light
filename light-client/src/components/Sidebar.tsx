@@ -39,6 +39,7 @@ export default function Sidebar({
 }: SidebarProps) {
   const [search, setSearch] = useState('')
   const [showSettings, setShowSettings] = useState(false)
+  const [settingsTab, setSettingsTab] = useState<'profile' | 'general' | 'privacy' | 'notifications'>('profile')
   const [isEditing, setIsEditing] = useState(false)
   const [editName, setEditName] = useState(currentUser.displayName)
   const [editUsername, setEditUsername] = useState(currentUser.username)
@@ -227,6 +228,325 @@ export default function Sidebar({
 
   return (
     <aside className="sidebar" onClick={() => setContextMenu(null)}>
+      {/* Панель настроек поверх сайдбара */}
+      {showSettings && (
+        <div className="settings-overlay">
+          <div className="settings-sidebar">
+            <div className="settings-sidebar-header">
+              <button className="settings-back-btn" onClick={() => setShowSettings(false)}>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M19 12H5M12 19l-7-7 7-7"/>
+                </svg>
+              </button>
+              <span className="settings-sidebar-title">Настройки</span>
+            </div>
+
+            <div className="settings-tabs">
+              <button 
+                className={`settings-tab ${settingsTab === 'profile' ? 'active' : ''}`}
+                onClick={() => setSettingsTab('profile')}
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                  <circle cx="12" cy="7" r="4"/>
+                </svg>
+                Профиль
+              </button>
+              <button 
+                className={`settings-tab ${settingsTab === 'general' ? 'active' : ''}`}
+                onClick={() => setSettingsTab('general')}
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="12" cy="12" r="3"/>
+                  <path d="M12 1v6m0 6v6m9-9h-6m-6 0H3"/>
+                </svg>
+                Основные
+              </button>
+              <button 
+                className={`settings-tab ${settingsTab === 'privacy' ? 'active' : ''}`}
+                onClick={() => setSettingsTab('privacy')}
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                </svg>
+                Приватность
+              </button>
+              <button 
+                className={`settings-tab ${settingsTab === 'notifications' ? 'active' : ''}`}
+                onClick={() => setSettingsTab('notifications')}
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                  <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+                </svg>
+                Уведомления
+              </button>
+            </div>
+
+            <div className="settings-content">
+              {settingsTab === 'profile' && (
+                <div className="settings-section">
+                  {!isEditing ? (
+                    <>
+                      <div className="settings-profile-card">
+                        <div className="settings-profile-avatar">
+                          {avatarUrl ? (
+                            <img src={avatarUrl} alt="Avatar" />
+                          ) : (
+                            getInitials(currentUser.displayName)
+                          )}
+                        </div>
+                        <div className="settings-profile-info">
+                          <div className="settings-profile-name">{currentUser.displayName}</div>
+                          <div className="settings-profile-username">@{currentUser.username}</div>
+                        </div>
+                      </div>
+                      <button className="settings-btn-primary" onClick={() => setIsEditing(true)}>
+                        Редактировать профиль
+                      </button>
+                      <div className="settings-divider" />
+                      <button className="settings-btn-danger" onClick={onLogout}>
+                        Выйти из аккаунта
+                      </button>
+                    </>
+                  ) : (
+                    <div className="settings-edit-form">
+                      <div className="edit-avatar-section">
+                        <div className="settings-profile-avatar" style={{ width: '100px', height: '100px', fontSize: '32px' }}>
+                          {avatarUrl ? (
+                            <img src={avatarUrl} alt="Avatar" />
+                          ) : (
+                            getInitials(editName)
+                          )}
+                        </div>
+                        <div className="avatar-buttons">
+                          <label className="avatar-upload-btn">
+                            Изменить фото
+                            <input type="file" accept="image/*" onChange={handleAvatarChange} style={{ display: 'none' }} />
+                          </label>
+                          {avatarUrl && (
+                            <button className="avatar-remove-btn" onClick={() => setAvatarUrl(null)}>
+                              Удалить
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      <div className="edit-field">
+                        <label>Имя</label>
+                        <input type="text" value={editName} onChange={(e) => setEditName(e.target.value)} />
+                      </div>
+                      <div className="edit-field">
+                        <label>Имя пользователя</label>
+                        <input
+                          type="text"
+                          value={editUsername}
+                          onChange={(e) => setEditUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
+                        />
+                      </div>
+                      <div className="edit-actions">
+                        <button className="btn-cancel" onClick={handleCancelEdit}>Отмена</button>
+                        <button className="btn-save" onClick={handleSaveProfile}>Сохранить</button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {settingsTab === 'general' && (
+                <div className="settings-section">
+                  <div className="settings-group">
+                    <div className="settings-group-title">Внешний вид</div>
+                    <div className="settings-item">
+                      <div className="settings-item-info">
+                        <div className="settings-item-label">Тема оформления</div>
+                        <div className="settings-item-desc">Светлая или тёмная тема</div>
+                      </div>
+                      <button className="settings-toggle" onClick={toggleTheme}>
+                        {theme === 'dark' ? 'Тёмная' : 'Светлая'}
+                      </button>
+                    </div>
+                    <div className="settings-item">
+                      <div className="settings-item-info">
+                        <div className="settings-item-label">Размер шрифта</div>
+                        <div className="settings-item-desc">Маленький, средний или большой</div>
+                      </div>
+                      <button className="settings-toggle">Средний</button>
+                    </div>
+                  </div>
+
+                  <div className="settings-group">
+                    <div className="settings-group-title">Чаты</div>
+                    <div className="settings-item">
+                      <div className="settings-item-info">
+                        <div className="settings-item-label">Отправка по Enter</div>
+                        <div className="settings-item-desc">Отправлять сообщения клавишей Enter</div>
+                      </div>
+                      <label className="settings-switch">
+                        <input type="checkbox" defaultChecked />
+                        <span className="settings-switch-slider" />
+                      </label>
+                    </div>
+                    <div className="settings-item">
+                      <div className="settings-item-info">
+                        <div className="settings-item-label">Автозагрузка медиа</div>
+                        <div className="settings-item-desc">Автоматически загружать фото и видео</div>
+                      </div>
+                      <label className="settings-switch">
+                        <input type="checkbox" defaultChecked />
+                        <span className="settings-switch-slider" />
+                      </label>
+                    </div>
+                  </div>
+
+                  <div className="settings-group">
+                    <div className="settings-group-title">Язык</div>
+                    <div className="settings-item">
+                      <div className="settings-item-info">
+                        <div className="settings-item-label">Язык интерфейса</div>
+                        <div className="settings-item-desc">Русский</div>
+                      </div>
+                      <button className="settings-toggle">Изменить</button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {settingsTab === 'privacy' && (
+                <div className="settings-section">
+                  <div className="settings-group">
+                    <div className="settings-group-title">Конфиденциальность</div>
+                    <div className="settings-item">
+                      <div className="settings-item-info">
+                        <div className="settings-item-label">Последняя активность</div>
+                        <div className="settings-item-desc">Кто может видеть когда вы были в сети</div>
+                      </div>
+                      <button className="settings-toggle">Все</button>
+                    </div>
+                    <div className="settings-item">
+                      <div className="settings-item-info">
+                        <div className="settings-item-label">Аватар</div>
+                        <div className="settings-item-desc">Кто может видеть ваше фото профиля</div>
+                      </div>
+                      <button className="settings-toggle">Все</button>
+                    </div>
+                    <div className="settings-item">
+                      <div className="settings-item-info">
+                        <div className="settings-item-label">Статус "печатает"</div>
+                        <div className="settings-item-desc">Показывать когда вы печатаете</div>
+                      </div>
+                      <label className="settings-switch">
+                        <input type="checkbox" defaultChecked />
+                        <span className="settings-switch-slider" />
+                      </label>
+                    </div>
+                  </div>
+
+                  <div className="settings-group">
+                    <div className="settings-group-title">Безопасность</div>
+                    <div className="settings-item">
+                      <div className="settings-item-info">
+                        <div className="settings-item-label">Двухфакторная аутентификация</div>
+                        <div className="settings-item-desc">Дополнительная защита аккаунта</div>
+                      </div>
+                      <button className="settings-toggle">Включить</button>
+                    </div>
+                    <div className="settings-item">
+                      <div className="settings-item-info">
+                        <div className="settings-item-label">Активные сеансы</div>
+                        <div className="settings-item-desc">Управление устройствами</div>
+                      </div>
+                      <button className="settings-toggle">Показать</button>
+                    </div>
+                  </div>
+
+                  <div className="settings-group">
+                    <div className="settings-group-title">Блокировка</div>
+                    <div className="settings-item">
+                      <div className="settings-item-info">
+                        <div className="settings-item-label">Заблокированные пользователи</div>
+                        <div className="settings-item-desc">Список заблокированных контактов</div>
+                      </div>
+                      <button className="settings-toggle">0</button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {settingsTab === 'notifications' && (
+                <div className="settings-section">
+                  <div className="settings-group">
+                    <div className="settings-group-title">Уведомления</div>
+                    <div className="settings-item">
+                      <div className="settings-item-info">
+                        <div className="settings-item-label">Показывать уведомления</div>
+                        <div className="settings-item-desc">Получать уведомления о новых сообщениях</div>
+                      </div>
+                      <label className="settings-switch">
+                        <input type="checkbox" defaultChecked />
+                        <span className="settings-switch-slider" />
+                      </label>
+                    </div>
+                    <div className="settings-item">
+                      <div className="settings-item-info">
+                        <div className="settings-item-label">Звук уведомлений</div>
+                        <div className="settings-item-desc">Воспроизводить звук при получении сообщения</div>
+                      </div>
+                      <label className="settings-switch">
+                        <input type="checkbox" defaultChecked />
+                        <span className="settings-switch-slider" />
+                      </label>
+                    </div>
+                    <div className="settings-item">
+                      <div className="settings-item-info">
+                        <div className="settings-item-label">Предпросмотр сообщений</div>
+                        <div className="settings-item-desc">Показывать текст сообщения в уведомлении</div>
+                      </div>
+                      <label className="settings-switch">
+                        <input type="checkbox" defaultChecked />
+                        <span className="settings-switch-slider" />
+                      </label>
+                    </div>
+                  </div>
+
+                  <div className="settings-group">
+                    <div className="settings-group-title">Режим "Не беспокоить"</div>
+                    <div className="settings-item">
+                      <div className="settings-item-info">
+                        <div className="settings-item-label">Включить режим</div>
+                        <div className="settings-item-desc">Отключить все уведомления</div>
+                      </div>
+                      <label className="settings-switch">
+                        <input type="checkbox" />
+                        <span className="settings-switch-slider" />
+                      </label>
+                    </div>
+                    <div className="settings-item">
+                      <div className="settings-item-info">
+                        <div className="settings-item-label">Расписание</div>
+                        <div className="settings-item-desc">Автоматически включать в определённое время</div>
+                      </div>
+                      <button className="settings-toggle">Настроить</button>
+                    </div>
+                  </div>
+
+                  <div className="settings-group">
+                    <div className="settings-group-title">Исключения</div>
+                    <div className="settings-item">
+                      <div className="settings-item-info">
+                        <div className="settings-item-label">Важные чаты</div>
+                        <div className="settings-item-desc">Всегда получать уведомления от этих чатов</div>
+                      </div>
+                      <button className="settings-toggle">Добавить</button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="sidebar-header">
         <span className="sidebar-logo">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style={{ marginRight: '8px', verticalAlign: 'middle' }}>
@@ -264,68 +584,7 @@ export default function Sidebar({
         </div>
       </div>
 
-      {showSettings && (
-        <div className="settings-panel">
-          {!isEditing ? (
-            <>
-              <div className="settings-user">
-                <div className="settings-avatar">
-                  {avatarUrl ? (
-                    <img src={avatarUrl} alt="Avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  ) : (
-                    getInitials(currentUser.displayName)
-                  )}
-                </div>
-                <div className="settings-info">
-                  <div className="settings-name">{currentUser.displayName}</div>
-                  <div className="settings-username">@{currentUser.username}</div>
-                </div>
-              </div>
-              <button className="settings-edit" onClick={() => setIsEditing(true)}>Редактировать профиль</button>
-              <button className="settings-logout" onClick={onLogout}>Выйти</button>
-            </>
-          ) : (
-            <div className="settings-edit-form">
-              <div className="edit-avatar-section">
-                <div className="settings-avatar" style={{ width: '80px', height: '80px', fontSize: '24px' }}>
-                  {avatarUrl ? (
-                    <img src={avatarUrl} alt="Avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  ) : (
-                    getInitials(editName)
-                  )}
-                </div>
-                <div className="avatar-buttons">
-                  <label className="avatar-upload-btn">
-                    Изменить фото
-                    <input type="file" accept="image/*" onChange={handleAvatarChange} style={{ display: 'none' }} />
-                  </label>
-                  {avatarUrl && (
-                    <button className="avatar-remove-btn" onClick={() => setAvatarUrl(null)}>
-                      Удалить фото
-                    </button>
-                  )}
-                </div>
-              </div>
-              <div className="edit-field">
-                <label>Имя</label>
-                <input type="text" value={editName} onChange={(e) => setEditName(e.target.value)} />
-              </div>
-              <div className="edit-field">
-                <label>Имя пользователя</label>
-                <input
-                  type="text"
-                  value={editUsername}
-                  onChange={(e) => setEditUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
-                />
-              </div>
-              <div className="edit-actions">
-                <button className="btn-cancel" onClick={handleCancelEdit}>Отмена</button>
-                <button className="btn-save" onClick={handleSaveProfile}>Сохранить</button>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
+      {/* Убрал старую панель настроек сверху */}
 
       <div className="sidebar-search">
         <input type="text" placeholder="Поиск" value={search} onChange={(e) => handleSearch(e.target.value)} />
