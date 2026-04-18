@@ -626,11 +626,13 @@ io.on('connection', (socket) => {
       return
     }
 
-    db.prepare(`
+    const result = db.prepare(`
       UPDATE messages
       SET read = 1
       WHERE chat_id = ? AND sender_id != ? AND read = 0
     `).run(chatId, user.id)
+
+    console.log(`[messages:read] User ${user.id} read ${result.changes} messages in chat ${chatId}`)
 
     io.to(chatId).emit('messages:read', { chatId, userId: user.id })
   })

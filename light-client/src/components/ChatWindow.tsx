@@ -84,6 +84,12 @@ export default function ChatWindow({
         headers: { Authorization: `Bearer ${token}` }
       })
       const mapped = msgs.map(mapRawMessage)
+      console.log(`[loadMessages] Loaded ${mapped.length} messages for chat ${chatId}`)
+      mapped.forEach(msg => {
+        if (msg.senderId === currentUserId) {
+          console.log(`[loadMessages] My message ${msg.id}: read=${msg.read}`)
+        }
+      })
       setMessages(mapped)
       onMessagesLoaded?.(chatId, mapped)
     } catch (err) {
@@ -92,7 +98,7 @@ export default function ChatWindow({
     } finally {
       setLoading(false)
     }
-  }, [chatId, token, onMessagesLoaded, toast])
+  }, [chatId, token, onMessagesLoaded, toast, currentUserId])
 
   // FIX: добавлены все реальные зависимости в deps
   useEffect(() => {
@@ -132,6 +138,18 @@ export default function ChatWindow({
           replyTo: msg.replyTo
         }]
         onMessagesLoaded?.(chatId, newMessages)
+        
+        // Автоскролл к новому сообщению если пользователь был внизу
+        setTimeout(() => {
+          const messagesList = messagesListRef.current
+          if (messagesList) {
+            const isNearBottom = messagesList.scrollHeight - messagesList.scrollTop - messagesList.clientHeight < 200
+            if (isNearBottom) {
+              bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+            }
+          }
+        }, 100)
+        
         return newMessages
       })
     }
@@ -139,16 +157,26 @@ export default function ChatWindow({
     const handleMessagesRead = ({ chatId: readChatId, userId: readUserId }: { chatId: string; userId: string }) => {
       if (readChatId !== chatId) return
       
+      console.log(`[messages:read] Received event: readUserId=${readUserId}, currentUserId=${userId}`)
+      
       // readUserId - это кто прочитал сообщения
       // Если это НЕ мы, значит другой пользователь прочитал НАШИ сообщения
+      // Помечаем как прочитанные все НАШИ исходящие сообщения
       if (readUserId !== userId) {
+        console.log(`[messages:read] Updating messages to read=true`)
         setMessages(prev => {
-          const updated = prev.map(msg =>
-            msg.senderId === userId && !msg.read ? { ...msg, read: true } : msg
-          )
+          const updated = prev.map(msg => {
+            if (msg.senderId === userId && !msg.read) {
+              console.log(`[messages:read] Marking message ${msg.id} as read`)
+              return { ...msg, read: true }
+            }
+            return msg
+          })
           onMessagesLoaded?.(chatId, updated)
           return updated
         })
+      } else {
+        console.log(`[messages:read] Skipping update - we are the reader`)
       }
     }
 
@@ -187,13 +215,26 @@ export default function ChatWindow({
   const hasScrolledRef = useRef(false)
 
   // Отслеживаем видимость сообщений с помощью Intersection Observer
+  const hasEmittedReadRef = useRef(false)
+  
   useEffect(() => {
     const socket = getSocket()
-    if (!socket || !socket.connected) return
+    if (!socket || !socket.connected || !messages.length) return
+
+    // Проверяем есть ли непрочитанные входящие сообщения
+    const unreadIncoming = messages.filter(m => m.senderId !== userId && !m.read)
+    
+    if (unreadIncoming.length === 0) {
+      hasEmittedReadRef.current = false
+      return
+    }
 
     const observer = new IntersectionObserver(
       (entries) => {
-        // Проверяем есть ли видимые непрочитанные входящие сообщения
+        // Если уже отправили событие для этого чата, не отправляем повторно
+        if (hasEmittedReadRef.current) return
+
+        // Проверяем видимо ли хотя бы одно непрочитанное сообщение
         const hasVisibleUnread = entries.some(entry => {
           if (!entry.isIntersecting) return false
           const messageId = entry.target.getAttribute('data-message-id')
@@ -201,18 +242,21 @@ export default function ChatWindow({
           return message && message.senderId !== userId && !message.read
         })
 
+        // Если есть видимые непрочитанные, помечаем ВСЕ как прочитанные
         if (hasVisibleUnread) {
           socket.emit('messages:read', { chatId })
+          hasEmittedReadRef.current = true
         }
       },
       {
         root: messagesListRef.current,
-        threshold: 0.5 // Сообщение должно быть видно хотя бы на 50%
+        threshold: 0.5 // Сообщение должно быть видно на 50%
       }
     )
 
-    // Наблюдаем за всеми сообщениями
-    Object.values(messagesRef.current).forEach(el => {
+    // Наблюдаем только за непрочитанными входящими сообщениями
+    unreadIncoming.forEach(msg => {
+      const el = messagesRef.current[msg.id]
       if (el) observer.observe(el)
     })
 
@@ -222,13 +266,10 @@ export default function ChatWindow({
   // Сохраняем позицию скролла при прокрутке
   useEffect(() => {
     const messagesList = messagesListRef.current
-    if (!messagesList) return
+    if (!messagesList || !onScrollPositionChange) return
 
     const handleScroll = () => {
-      const scrollTop = messagesList.scrollTop
-      if (onScrollPositionChange) {
-        onScrollPositionChange(scrollTop)
-      }
+      onScrollPositionChange(messagesList.scrollTop)
     }
 
     messagesList.addEventListener('scroll', handleScroll)
@@ -238,6 +279,7 @@ export default function ChatWindow({
   useEffect(() => {
     // Сбрасываем флаг при смене чата
     hasScrolledRef.current = false
+    hasEmittedReadRef.current = false
   }, [chatId])
 
   useEffect(() => {
@@ -298,6 +340,11 @@ export default function ChatWindow({
       setInput('')
       setReplyTo(null)
       onMessageSent?.()
+      
+      // ВСЕГДА скроллим вниз после отправки своего сообщения
+      setTimeout(() => {
+        bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+      }, 100)
     } catch (err) {
       console.error('Send message error:', err)
       toast.error('Ошибка отправки сообщения')

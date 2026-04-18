@@ -62,10 +62,8 @@ function createWindow() {
   win.setBackgroundColor('#17212b')
   win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'))
 
-  // FIX: DevTools открываются только в режиме разработки
-  if (process.env.NODE_ENV === 'development') {
-    win.webContents.openDevTools({ mode: 'detach' })
-  }
+  // Всегда открываем DevTools для отладки
+  win.webContents.openDevTools({ mode: 'detach' })
 
   setTimeout(() => {
     autoUpdater.checkForUpdates().catch(err => {
