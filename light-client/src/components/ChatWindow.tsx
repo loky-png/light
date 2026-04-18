@@ -134,20 +134,21 @@ export default function ChatWindow({
         onMessagesLoaded?.(chatId, newMessages)
         return newMessages
       })
-
-      setTimeout(() => {
-        if (socket.connected) {
-          socket.emit('messages:read', { chatId: msg.chatId })
-        }
-      }, 500)
     }
 
     const handleMessagesRead = ({ chatId: readChatId, userId: readUserId }: { chatId: string; userId: string }) => {
       if (readChatId !== chatId) return
+      
+      // readUserId - это кто прочитал сообщения
+      // Если это НЕ мы, значит другой пользователь прочитал НАШИ сообщения
       if (readUserId !== userId) {
-        setMessages(prev => prev.map(msg =>
-          msg.senderId === userId ? { ...msg, read: true } : msg
-        ))
+        setMessages(prev => {
+          const updated = prev.map(msg =>
+            msg.senderId === userId && !msg.read ? { ...msg, read: true } : msg
+          )
+          onMessagesLoaded?.(chatId, updated)
+          return updated
+        })
       }
     }
 
@@ -185,14 +186,49 @@ export default function ChatWindow({
   const messagesListRef = useRef<HTMLDivElement>(null)
   const hasScrolledRef = useRef(false)
 
+  // Отслеживаем видимость сообщений с помощью Intersection Observer
+  useEffect(() => {
+    const socket = getSocket()
+    if (!socket || !socket.connected) return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        // Проверяем есть ли видимые непрочитанные входящие сообщения
+        const hasVisibleUnread = entries.some(entry => {
+          if (!entry.isIntersecting) return false
+          const messageId = entry.target.getAttribute('data-message-id')
+          const message = messages.find(m => m.id === messageId)
+          return message && message.senderId !== userId && !message.read
+        })
+
+        if (hasVisibleUnread) {
+          socket.emit('messages:read', { chatId })
+        }
+      },
+      {
+        root: messagesListRef.current,
+        threshold: 0.5 // Сообщение должно быть видно хотя бы на 50%
+      }
+    )
+
+    // Наблюдаем за всеми сообщениями
+    Object.values(messagesRef.current).forEach(el => {
+      if (el) observer.observe(el)
+    })
+
+    return () => observer.disconnect()
+  }, [messages, chatId, userId])
+
   // Сохраняем позицию скролла при прокрутке
   useEffect(() => {
     const messagesList = messagesListRef.current
-    if (!messagesList || !onScrollPositionChange) return
+    if (!messagesList) return
 
     const handleScroll = () => {
       const scrollTop = messagesList.scrollTop
-      onScrollPositionChange(scrollTop)
+      if (onScrollPositionChange) {
+        onScrollPositionChange(scrollTop)
+      }
     }
 
     messagesList.addEventListener('scroll', handleScroll)
@@ -368,6 +404,7 @@ export default function ChatWindow({
               <div
                 key={msg.id}
                 ref={el => { if (el) messagesRef.current[msg.id] = el }}
+                data-message-id={msg.id}
                 className={`message ${isOut ? 'out' : 'in'} ${showTail ? 'tail' : ''} ${isFirstInGroup ? 'first-in-group' : ''}`}
                 onContextMenu={(e) => handleMessageContextMenu(e, msg)}
               >
@@ -386,24 +423,26 @@ export default function ChatWindow({
                       </div>
                     </div>
                   )}
-                  <span className="message-text">{msg.text}</span>
-                  <span className="message-meta">
-                    {formatTime(msg.createdAt)}
-                    {isOut && (
-                      <span className="message-check">
-                        {msg.read ? (
-                          <svg width="16" height="10" viewBox="0 0 16 10" fill="none">
-                            <path d="M1 5L5 9L15 1" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                            <path d="M5 5L9 9L19 1" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" transform="translate(-4, 0)"/>
-                          </svg>
-                        ) : (
-                          <svg width="12" height="10" viewBox="0 0 12 10" fill="none">
-                            <path d="M1 5L5 9L11 1" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                          </svg>
-                        )}
-                      </span>
-                    )}
-                  </span>
+                  <div className="message-content">
+                    <span className="message-text">{msg.text}</span>
+                    <span className="message-meta">
+                      {formatTime(msg.createdAt)}
+                      {isOut && (
+                        <span className="message-check">
+                          {msg.read ? (
+                            <svg width="13" height="8" viewBox="0 0 18 12" fill="none">
+                              <path d="M1 6L6 11L17 1" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                              <path d="M6 6L11 11L22 1" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" transform="translate(-5, 0)"/>
+                            </svg>
+                          ) : (
+                            <svg width="13" height="8" viewBox="0 0 14 10" fill="none">
+                              <path d="M1 5L6 10L13 1" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                            </svg>
+                          )}
+                        </span>
+                      )}
+                    </span>
+                  </div>
                 </div>
               </div>
             )
