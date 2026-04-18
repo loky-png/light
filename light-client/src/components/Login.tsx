@@ -63,7 +63,12 @@ export default function Login({ onLogin }: LoginProps) {
   return (
     <div className="login-screen">
       <div className="login-card">
-        <div className="login-logo">☀</div>
+        <div className="login-logo">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none">
+            <circle cx="12" cy="12" r="5" fill="currentColor"/>
+            <path d="M12 1v3M12 20v3M23 12h-3M4 12H1M20.5 3.5l-2 2M5.5 18.5l-2 2M20.5 20.5l-2-2M5.5 5.5l-2-2" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+          </svg>
+        </div>
         <h1 className="login-title">Light</h1>
         <p className="login-subtitle">
           {mode === 'login' ? 'Войдите в аккаунт' : 'Создайте аккаунт'}

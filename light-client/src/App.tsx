@@ -45,6 +45,7 @@ export default function App() {
   const [isValidating, setIsValidating] = useState(true)
   const [userStatuses, setUserStatuses] = useState<Record<string, UserStatus>>({})
   const [messagesCache, setMessagesCache] = useState<Record<string, Message[]>>({})
+  const [scrollPositions, setScrollPositions] = useState<Record<string, number>>({})
 
   const selectedChatIdRef = useRef<string | null>(null)
   const currentUserIdRef = useRef<string | null>(null)
@@ -356,10 +357,19 @@ export default function App() {
                   token={token}
                   cachedMessages={messagesCache[selectedChat.id]}
                   onMessagesLoaded={handleMessagesLoaded}
+                  savedScrollPosition={scrollPositions[selectedChat.id]}
+                  onScrollPositionChange={(position) => {
+                    setScrollPositions(prev => ({ ...prev, [selectedChat.id]: position }))
+                  }}
                 />
               ) : (
                 <div className="empty-state">
-                  <span className="empty-icon">☀</span>
+                  <span className="empty-icon">
+                    <svg width="64" height="64" viewBox="0 0 24 24" fill="none">
+                      <circle cx="12" cy="12" r="5" fill="currentColor"/>
+                      <path d="M12 1v3M12 20v3M23 12h-3M4 12H1M20.5 3.5l-2 2M5.5 18.5l-2 2M20.5 20.5l-2-2M5.5 5.5l-2-2" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                    </svg>
+                  </span>
                   <p>Выберите чат, чтобы начать общение</p>
                 </div>
               )}

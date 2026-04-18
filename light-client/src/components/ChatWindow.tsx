@@ -16,6 +16,8 @@ interface ChatWindowProps {
   token: string
   cachedMessages?: Message[]
   onMessagesLoaded?: (chatId: string, messages: Message[]) => void
+  savedScrollPosition?: number
+  onScrollPositionChange?: (position: number) => void
 }
 
 function formatTime(date: Date): string {
@@ -53,7 +55,8 @@ const MAX_MESSAGE_LENGTH = 1000
 
 export default function ChatWindow({
   chatId, chatName, isOnline, userStatus, onMessageSent,
-  currentUserId, token, cachedMessages, onMessagesLoaded
+  currentUserId, token, cachedMessages, onMessagesLoaded,
+  savedScrollPosition, onScrollPositionChange
 }: ChatWindowProps) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
@@ -96,9 +99,6 @@ export default function ChatWindow({
     if (cachedMessages && cachedMessages.length > 0) {
       setMessages(cachedMessages)
       setLoading(false)
-      setTimeout(() => {
-        bottomRef.current?.scrollIntoView({ behavior: 'auto' })
-      }, 0)
     } else {
       setMessages([])
       setLoading(true)
@@ -181,9 +181,49 @@ export default function ChatWindow({
     }
   }, [chatId, userId, cachedMessages, loadMessages, onMessagesLoaded])
 
+  // Умный скролл: восстанавливаем позицию или скроллим вниз
+  const messagesListRef = useRef<HTMLDivElement>(null)
+  const hasScrolledRef = useRef(false)
+
+  // Сохраняем позицию скролла при прокрутке
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'auto' })
-  }, [messages.length])
+    const messagesList = messagesListRef.current
+    if (!messagesList || !onScrollPositionChange) return
+
+    const handleScroll = () => {
+      const scrollTop = messagesList.scrollTop
+      onScrollPositionChange(scrollTop)
+    }
+
+    messagesList.addEventListener('scroll', handleScroll)
+    return () => messagesList.removeEventListener('scroll', handleScroll)
+  }, [onScrollPositionChange])
+
+  useEffect(() => {
+    // Сбрасываем флаг при смене чата
+    hasScrolledRef.current = false
+  }, [chatId])
+
+  useEffect(() => {
+    // Скроллим только если еще не скроллили и сообщения загружены
+    if (!hasScrolledRef.current && !loading && messages.length > 0) {
+      const messagesList = messagesListRef.current
+      if (!messagesList) return
+
+      const timer = setTimeout(() => {
+        if (savedScrollPosition !== undefined && savedScrollPosition > 0) {
+          // Восстанавливаем сохраненную позицию БЕЗ анимации
+          messagesList.scrollTop = savedScrollPosition
+        } else {
+          // Первый раз открываем чат - скроллим вниз плавно
+          bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+        }
+        hasScrolledRef.current = true
+      }, 50)
+      
+      return () => clearTimeout(timer)
+    }
+  }, [loading, messages.length, savedScrollPosition])
 
   const sendMessage = async () => {
     const text = input.trim()
@@ -308,7 +348,7 @@ export default function ChatWindow({
         </div>
       </div>
 
-      <div className="messages-list" onClick={() => setContextMenu(null)}>
+      <div className="messages-list" ref={messagesListRef} onClick={() => setContextMenu(null)}>
         {loading ? (
           <div style={{ textAlign: 'center', padding: '20px', color: 'var(--text-muted)' }}>Загрузка...</div>
         ) : messages.length === 0 ? (
@@ -349,7 +389,20 @@ export default function ChatWindow({
                   <span className="message-text">{msg.text}</span>
                   <span className="message-meta">
                     {formatTime(msg.createdAt)}
-                    {isOut && <span className="message-check">{msg.read ? '✓✓' : '✓'}</span>}
+                    {isOut && (
+                      <span className="message-check">
+                        {msg.read ? (
+                          <svg width="16" height="10" viewBox="0 0 16 10" fill="none">
+                            <path d="M1 5L5 9L15 1" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                            <path d="M5 5L9 9L19 1" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" transform="translate(-4, 0)"/>
+                          </svg>
+                        ) : (
+                          <svg width="12" height="10" viewBox="0 0 12 10" fill="none">
+                            <path d="M1 5L5 9L11 1" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                        )}
+                      </span>
+                    )}
                   </span>
                 </div>
               </div>
@@ -439,7 +492,11 @@ export default function ChatWindow({
               </span>
               <span className="reply-preview-text">{replyTo.text}</span>
             </div>
-            <button className="reply-preview-close" onClick={() => setReplyTo(null)}>✕</button>
+            <button className="reply-preview-close" onClick={() => setReplyTo(null)}>
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                <path d="M1 1L13 13M13 1L1 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+              </svg>
+            </button>
           </div>
         )}
         <div className="chat-input-wrapper">

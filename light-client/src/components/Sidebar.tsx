@@ -228,7 +228,13 @@ export default function Sidebar({
   return (
     <aside className="sidebar" onClick={() => setContextMenu(null)}>
       <div className="sidebar-header">
-        <span className="sidebar-logo">☀ Light</span>
+        <span className="sidebar-logo">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style={{ marginRight: '8px', verticalAlign: 'middle' }}>
+            <circle cx="12" cy="12" r="5" fill="currentColor"/>
+            <path d="M12 1v3M12 20v3M23 12h-3M4 12H1M20.5 3.5l-2 2M5.5 18.5l-2 2M20.5 20.5l-2-2M5.5 5.5l-2-2" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+          </svg>
+          Light
+        </span>
         <div className="sidebar-actions">
           <button className="theme-toggle" onClick={toggleTheme} aria-label={theme === 'dark' ? 'Светлая тема' : 'Тёмная тема'}>
             {theme === 'dark' ? (
