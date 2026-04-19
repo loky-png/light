@@ -647,7 +647,7 @@ export default function Sidebar({
                   <span className="chat-name">{chat.name || 'Чат'}</span>
                   {chat.last_message_time && (
                     <span className="chat-time">
-                      {new Date(chat.last_message_time * 1000).toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' })}
+                      {new Date(chat.last_message_time).toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' })}
                     </span>
                   )}
                 </div>

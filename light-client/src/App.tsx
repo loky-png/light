@@ -151,7 +151,7 @@ export default function App() {
         return {
           ...chat,
           last_message: message.text,
-          last_message_time: Math.floor(message.createdAt / 1000),
+          last_message_time: message.createdAt,
           unread: isOwnMessage || isCurrentChat ? 0 : chat.unread + 1
         }
       }))

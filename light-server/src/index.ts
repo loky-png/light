@@ -492,7 +492,7 @@ app.post('/api/chats/direct', (req, res) => {
     }
 
     const chatId = randomUUID()
-    db.prepare('INSERT INTO chats (id, type, name) VALUES (?, ?, ?)').run(chatId, 'direct', null)
+    db.prepare('INSERT INTO chats (id, type, name, created_at) VALUES (?, ?, ?, ?)').run(chatId, 'direct', null, Date.now())
     db.prepare('INSERT INTO chat_members (chat_id, user_id) VALUES (?, ?), (?, ?)').run(chatId, user.id, chatId, targetUserId)
 
     return { chatId, created: true }

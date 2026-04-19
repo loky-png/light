@@ -11,14 +11,14 @@ db.exec(`
     password_hash TEXT NOT NULL,
     public_key TEXT,
     avatar TEXT,
-    created_at INTEGER DEFAULT (unixepoch())
+    created_at INTEGER NOT NULL
   );
 
   CREATE TABLE IF NOT EXISTS chats (
     id TEXT PRIMARY KEY,
     type TEXT NOT NULL DEFAULT 'direct',
     name TEXT,
-    created_at INTEGER DEFAULT (unixepoch())
+    created_at INTEGER NOT NULL
   );
 
   CREATE TABLE IF NOT EXISTS chat_members (
@@ -32,7 +32,7 @@ db.exec(`
     chat_id TEXT NOT NULL,
     sender_id TEXT NOT NULL,
     text TEXT NOT NULL,
-    created_at INTEGER DEFAULT (unixepoch()),
+    created_at INTEGER NOT NULL,
     read INTEGER DEFAULT 0,
     reply_to TEXT
   );
@@ -46,7 +46,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS hidden_chats (
     chat_id TEXT NOT NULL,
     user_id TEXT NOT NULL,
-    hidden_at INTEGER DEFAULT (unixepoch()),
+    hidden_at INTEGER NOT NULL,
     PRIMARY KEY (chat_id, user_id)
   );
 
@@ -86,6 +86,28 @@ try {
   console.log('Added reply_to column to messages table')
 } catch (e) {
   // Колонка уже существует
+}
+
+// Миграция: конвертируем старые timestamps из секунд в миллисекунды
+try {
+  const needsMigration = db.prepare('SELECT COUNT(*) as count FROM messages WHERE created_at < 2000000000').get() as { count: number }
+  
+  if (needsMigration.count > 0) {
+    console.log(`Migrating ${needsMigration.count} messages from seconds to milliseconds...`)
+    
+    db.transaction(() => {
+      // Умножаем на 1000 все timestamps которые явно в секундах (< 2033 года)
+      db.prepare('UPDATE messages SET created_at = created_at * 1000 WHERE created_at < 2000000000').run()
+      db.prepare('UPDATE chats SET created_at = created_at * 1000 WHERE created_at < 2000000000').run()
+      db.prepare('UPDATE users SET created_at = created_at * 1000 WHERE created_at < 2000000000').run()
+      db.prepare('UPDATE users SET last_seen = last_seen * 1000 WHERE last_seen > 0 AND last_seen < 2000000000').run()
+      db.prepare('UPDATE hidden_chats SET hidden_at = hidden_at * 1000 WHERE hidden_at < 2000000000').run()
+    })()
+    
+    console.log('Migration completed!')
+  }
+} catch (e) {
+  console.error('Migration error:', e)
 }
 
 // ПРИМЕЧАНИЕ: SQLite не поддерживает добавление FOREIGN KEY к существующим таблицам
