@@ -45,7 +45,7 @@ function mapRawMessage(m: RawMessage): Message {
     chatId: m.chat_id,
     senderId: m.sender_id,
     text: m.text,
-    createdAt: new Date(m.created_at * 1000),
+    createdAt: new Date(m.created_at),
     read: m.read === 1,
     replyTo: m.reply_to ?? undefined
   }

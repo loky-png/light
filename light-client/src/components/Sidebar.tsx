@@ -60,6 +60,7 @@ export default function Sidebar({
   }, [currentUser])
 
   useEffect(() => {
+    // Очистка таймера при размонтировании
     return () => {
       if (searchTimeoutRef.current) {
         window.clearTimeout(searchTimeoutRef.current)
@@ -362,7 +363,7 @@ export default function Sidebar({
                         <div className="settings-item-desc">Светлая или тёмная тема</div>
                       </div>
                       <button className="settings-toggle" onClick={toggleTheme}>
-                        {theme === 'dark' ? 'Тёмная' : 'Светлая'}
+                        {theme === 'dark' ? 'Светлая' : 'Тёмная'}
                       </button>
                     </div>
                     <div className="settings-item">

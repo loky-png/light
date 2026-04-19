@@ -55,6 +55,7 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_messages_sender_id ON messages(sender_id);
   CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at);
   CREATE INDEX IF NOT EXISTS idx_messages_chat_created ON messages(chat_id, created_at);
+  CREATE INDEX IF NOT EXISTS idx_messages_unread ON messages(chat_id, read, sender_id);
   CREATE INDEX IF NOT EXISTS idx_chat_members_user_id ON chat_members(user_id);
   CREATE INDEX IF NOT EXISTS idx_chat_members_chat_id ON chat_members(chat_id);
   CREATE INDEX IF NOT EXISTS idx_hidden_messages_user_id ON hidden_messages(user_id);
@@ -86,5 +87,14 @@ try {
 } catch (e) {
   // Колонка уже существует
 }
+
+// ПРИМЕЧАНИЕ: SQLite не поддерживает добавление FOREIGN KEY к существующим таблицам
+// Для новых установок рекомендуется пересоздать таблицы с CASCADE:
+// CREATE TABLE hidden_messages (
+//   message_id TEXT NOT NULL,
+//   user_id TEXT NOT NULL,
+//   PRIMARY KEY (message_id, user_id),
+//   FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE
+// );
 
 export default db

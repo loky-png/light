@@ -31,13 +31,34 @@ type ReplyPayload = {
 
 const app = express()
 const httpServer = createServer(app)
+
+// CORS с ограничением доменов
+const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',') || [
+  'http://localhost:5173',
+  'http://localhost:3000'
+]
+
 const io = new Server(httpServer, {
-  cors: { origin: '*' }
+  cors: { 
+    origin: allowedOrigins,
+    credentials: true
+  }
 })
 
 const onlineUsers = new Map<string, OnlineUserState>()
+const lastSeenWrites = new Map<string, number>()
 
-app.use(cors())
+app.use(cors({
+  origin: (origin, callback) => {
+    // Разрешаем запросы без origin (например, из Electron)
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true)
+    } else {
+      callback(new Error('Not allowed by CORS'))
+    }
+  },
+  credentials: true
+}))
 app.use(express.json({ limit: '10mb' }))
 app.use('/api/auth', authRouter)
 
@@ -72,15 +93,21 @@ function getPresenceStatus(lastSeen: number, isOnline: boolean): PresenceStatus 
 }
 
 function touchUserLastSeen(userId: string, timestamp = Date.now()) {
-  db.prepare('UPDATE users SET last_seen = ? WHERE id = ?').run(timestamp, userId)
+  // Дебаунсинг: записываем в БД максимум раз в 5 секунд
+  const lastWrite = lastSeenWrites.get(userId) ?? 0
+  const shouldWrite = timestamp - lastWrite >= 5000
 
-  const existing = onlineUsers.get(userId)
-  if (!existing) {
-    return
+  if (shouldWrite) {
+    db.prepare('UPDATE users SET last_seen = ? WHERE id = ?').run(timestamp, userId)
+    lastSeenWrites.set(userId, timestamp)
   }
 
-  existing.lastSeen = timestamp
-  onlineUsers.set(userId, existing)
+  // Всегда обновляем in-memory состояние
+  const existing = onlineUsers.get(userId)
+  if (existing) {
+    existing.lastSeen = timestamp
+    onlineUsers.set(userId, existing)
+  }
 }
 
 function getUserStatus(userId: string): UserStatus {
@@ -99,6 +126,16 @@ function getUserStatus(userId: string): UserStatus {
     status: getPresenceStatus(lastSeen, false),
     lastSeen
   }
+}
+
+function sanitizeText(text: string): string {
+  // Простая защита от XSS - экранируем HTML символы
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;')
 }
 
 function estimateBase64Bytes(value: string): number {
@@ -222,7 +259,7 @@ function joinUserSocketsToChat(chatId: string, userId: string) {
 
 function cleanupOldMessages() {
   try {
-    const sevenDaysAgo = Math.floor(Date.now() / 1000) - (7 * 24 * 60 * 60)
+    const sevenDaysAgo = Date.now() - (7 * 24 * 60 * 60 * 1000)
     const oldMessages = db.prepare('SELECT id FROM messages WHERE created_at < ?').all(sevenDaysAgo) as Array<{ id: string }>
 
     if (oldMessages.length === 0) {
@@ -313,6 +350,10 @@ app.put('/api/profile', (req, res) => {
     if (avatar && !avatar.startsWith('data:image/')) {
       return res.status(400).json({ error: 'Avatar must be an image data URL' })
     }
+    // Защита от XSS через SVG - разрешаем только безопасные форматы
+    if (avatar && !avatar.match(/^data:image\/(png|jpeg|jpg|webp|gif);base64,/)) {
+      return res.status(400).json({ error: 'Only PNG, JPEG, WEBP, GIF formats allowed' })
+    }
     if (avatar && estimateBase64Bytes(avatar) > 5 * 1024 * 1024) {
       return res.status(400).json({ error: 'Avatar too large (max 5MB)' })
     }
@@ -394,7 +435,7 @@ app.delete('/api/chats/:chatId', (req, res) => {
     }
 
     db.prepare('INSERT OR REPLACE INTO hidden_chats (chat_id, user_id, hidden_at) VALUES (?, ?, ?)')
-      .run(chatId, user.id, Math.floor(Date.now() / 1000))
+      .run(chatId, user.id, Date.now())
 
     return res.json({ success: true })
   } catch (error: any) {
@@ -676,10 +717,11 @@ io.on('connection', (socket) => {
       }
 
       const messageId = randomUUID()
-      const createdAt = Math.floor(Date.now() / 1000)
+      const createdAt = Date.now()
+      const sanitizedText = sanitizeText(normalizedText)
 
       db.prepare('INSERT INTO messages (id, chat_id, sender_id, text, created_at, reply_to) VALUES (?, ?, ?, ?, ?, ?)')
-        .run(messageId, chatId, user.id, normalizedText, createdAt, replyPayload ? JSON.stringify(replyPayload) : null)
+        .run(messageId, chatId, user.id, sanitizedText, createdAt, replyPayload ? JSON.stringify(replyPayload) : null)
 
       const participantIds = getChatParticipantIds(chatId)
       unhideChatForUsers(chatId, participantIds)
@@ -696,10 +738,10 @@ io.on('connection', (socket) => {
       } = {
         id: messageId,
         chatId,
-        text: normalizedText,
+        text: sanitizedText,
         senderId: user.id,
         username: user.username,
-        createdAt: createdAt * 1000,
+        createdAt,
         read: false
       }
 
@@ -723,6 +765,7 @@ io.on('connection', (socket) => {
 
   socket.on('message:delete', ({ chatId, messageId, forEveryone }: { chatId: string; messageId: string; forEveryone: boolean }) => {
     try {
+      // Проверяем, что пользователь является участником чата
       const member = db.prepare('SELECT 1 FROM chat_members WHERE chat_id = ? AND user_id = ?').get(chatId, user.id)
       if (!member) {
         socket.emit('error', { message: 'Not a member of this chat' })
@@ -767,25 +810,17 @@ io.on('connection', (socket) => {
 
     currentState.socketIds.delete(socket.id)
     currentState.lastSeen = disconnectTime
-    onlineUsers.set(user.id, currentState)
     touchUserLastSeen(user.id, disconnectTime)
 
-    if (currentState.socketIds.size > 0) {
-      return
+    // Если у пользователя больше нет активных сокетов
+    if (currentState.socketIds.size === 0) {
+      // Удаляем из onlineUsers сразу
+      onlineUsers.delete(user.id)
+      io.emit('user:offline', { userId: user.id, lastSeen: disconnectTime })
+    } else {
+      // Обновляем состояние если есть другие сокеты
+      onlineUsers.set(user.id, currentState)
     }
-
-    io.emit('user:offline', { userId: user.id, lastSeen: disconnectTime })
-
-    setTimeout(() => {
-      const latestState = onlineUsers.get(user.id)
-      if (!latestState) {
-        return
-      }
-
-      if (latestState.socketIds.size === 0 && latestState.lastSeen === disconnectTime) {
-        onlineUsers.delete(user.id)
-      }
-    }, 5 * 60 * 1000)
   })
 })
 
