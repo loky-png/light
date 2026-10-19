@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import './Toast.css'
 
 interface ToastProps {
@@ -9,13 +9,19 @@ interface ToastProps {
 }
 
 export default function Toast({ message, type = 'info', onClose, duration = 3000 }: ToastProps) {
+  // Используем ref чтобы таймер не сбрасывался при смене ссылки на onClose
+  const onCloseRef = useRef(onClose)
+  useEffect(() => {
+    onCloseRef.current = onClose
+  })
+
   useEffect(() => {
     const timer = setTimeout(() => {
-      onClose()
+      onCloseRef.current()
     }, duration)
 
     return () => clearTimeout(timer)
-  }, [duration, onClose])
+  }, [duration]) // duration намеренно единственная зависимость — таймер не должен сбрасываться
 
   const icons = {
     info: (

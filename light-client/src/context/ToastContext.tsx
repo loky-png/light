@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, ReactNode } from 'react'
+import { createContext, useContext, useState, useCallback, ReactNode } from 'react'
 import Toast from '../components/Toast'
 
 interface ToastData {
@@ -20,21 +20,21 @@ const ToastContext = createContext<ToastContextType | undefined>(undefined)
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<ToastData[]>([])
 
-  const showToast = (message: string, type: 'info' | 'success' | 'error' | 'warning' = 'info') => {
+  const showToast = useCallback((message: string, type: 'info' | 'success' | 'error' | 'warning' = 'info') => {
     const id = Date.now()
     setToasts(prev => [...prev, { id, message, type }])
-  }
+  }, [])
 
-  const removeToast = (id: number) => {
+  const removeToast = useCallback((id: number) => {
     setToasts(prev => prev.filter(toast => toast.id !== id))
-  }
+  }, [])
 
   const contextValue: ToastContextType = {
     showToast,
-    info: (message: string) => showToast(message, 'info'),
-    success: (message: string) => showToast(message, 'success'),
-    error: (message: string) => showToast(message, 'error'),
-    warning: (message: string) => showToast(message, 'warning')
+    info: useCallback((message: string) => showToast(message, 'info'), [showToast]),
+    success: useCallback((message: string) => showToast(message, 'success'), [showToast]),
+    error: useCallback((message: string) => showToast(message, 'error'), [showToast]),
+    warning: useCallback((message: string) => showToast(message, 'warning'), [showToast])
   }
 
   return (

@@ -106,7 +106,6 @@ function touchUserLastSeen(userId: string, timestamp = Date.now()) {
   const existing = onlineUsers.get(userId)
   if (existing) {
     existing.lastSeen = timestamp
-    onlineUsers.set(userId, existing)
   }
 }
 
@@ -349,6 +348,10 @@ app.put('/api/profile', (req, res) => {
     }
     if (avatar && !avatar.startsWith('data:image/')) {
       return res.status(400).json({ error: 'Avatar must be an image data URL' })
+    }
+    // Защита от XSS через SVG - разрешаем только безопасные форматы
+    if (avatar && !avatar.match(/^data:image\/(png|jpeg|jpg|webp|gif);base64,/)) {
+      return res.status(400).json({ error: 'Only PNG, JPEG, WEBP, GIF formats allowed' })
     }
     // Защита от XSS через SVG - разрешаем только безопасные форматы
     if (avatar && !avatar.match(/^data:image\/(png|jpeg|jpg|webp|gif);base64,/)) {
@@ -772,7 +775,7 @@ io.on('connection', (socket) => {
         return
       }
 
-      const message = db.prepare('SELECT * FROM messages WHERE id = ? AND chat_id = ?').get(messageId, chatId) as
+      const message = db.prepare('SELECT sender_id FROM messages WHERE id = ? AND chat_id = ?').get(messageId, chatId) as
         | { sender_id: string }
         | undefined
       if (!message) {
@@ -817,10 +820,8 @@ io.on('connection', (socket) => {
       // Удаляем из onlineUsers сразу
       onlineUsers.delete(user.id)
       io.emit('user:offline', { userId: user.id, lastSeen: disconnectTime })
-    } else {
-      // Обновляем состояние если есть другие сокеты
-      onlineUsers.set(user.id, currentState)
     }
+    // Если есть другие сокеты, состояние уже обновлено выше (currentState - это ссылка)
   })
 })
 

@@ -2,8 +2,11 @@ import { io, Socket } from 'socket.io-client'
 import { API_URL } from '../config'
 
 let socket: Socket | null = null
-// FIX: правильный тип для браузерного setInterval (number, не NodeJS.Timeout)
 let pingInterval: number | null = null
+let connectErrorCount = 0
+
+// После 5 connect_error подряд (~15 сек) считаем сервер мёртвым
+const MAX_CONNECT_ERRORS = 5
 
 export function connectSocket(token: string): Socket {
   if (socket) {
@@ -16,6 +19,8 @@ export function connectSocket(token: string): Socket {
     pingInterval = null
   }
 
+  connectErrorCount = 0
+
   socket = io(API_URL, {
     auth: { token },
     transports: ['websocket'],
@@ -26,9 +31,14 @@ export function connectSocket(token: string): Socket {
   })
 
   socket.on('connect', () => {
+    // Успешное подключение — сбрасываем счётчик ошибок
+    connectErrorCount = 0
     window.dispatchEvent(new CustomEvent('socket:connected'))
     window.dispatchEvent(new CustomEvent('socket:reconnect'))
 
+    if (pingInterval) {
+      clearInterval(pingInterval)
+    }
     pingInterval = window.setInterval(() => {
       if (socket?.connected) {
         socket.emit('ping', Date.now())
@@ -46,17 +56,20 @@ export function connectSocket(token: string): Socket {
   })
 
   socket.on('connect_error', (error) => {
-    console.error('Socket connection error:', error.message)
+    connectErrorCount++
+    console.error(`Socket connect_error (${connectErrorCount}/${MAX_CONNECT_ERRORS}):`, error.message)
     window.dispatchEvent(new CustomEvent('socket:error', { detail: error.message }))
+
+    if (connectErrorCount >= MAX_CONNECT_ERRORS) {
+      // Сервер недоступен — уведомляем приложение
+      window.dispatchEvent(new CustomEvent('socket:server_down'))
+    }
   })
 
   socket.on('error', (payload) => {
     const message = typeof payload?.message === 'string' ? payload.message : 'Socket error'
     window.dispatchEvent(new CustomEvent('socket:error', { detail: message }))
   })
-
-  // FIX: удалён дублирующий глобальный обработчик message:new
-  // (он был только для console.log и конфликтовал с обработчиком в ChatWindow)
 
   return socket
 }

@@ -14,6 +14,7 @@
   display: flex;
   flex: 1;
   overflow: hidden;
+  position: relative;
   /* Предотвращаем черный экран при ресайзе */
   will-change: transform;
   backface-visibility: hidden;
@@ -55,4 +56,96 @@
   font-size: 16px;
   user-select: none;
   -webkit-user-select: none;
+}
+
+/* ===== Оверлей "Сервер недоступен" ===== */
+.server-down-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  animation: overlay-in 0.3s ease;
+}
+
+@keyframes overlay-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.server-down-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 40px 48px;
+  background: var(--glass-bg-strong, rgba(30, 30, 40, 0.95));
+  border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.08));
+  border-radius: 20px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5);
+  text-align: center;
+  animation: card-in 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+  max-width: 360px;
+  width: 100%;
+}
+
+@keyframes card-in {
+  from { opacity: 0; transform: scale(0.88) translateY(16px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.server-down-icon {
+  color: #ff6b6b;
+  opacity: 0.9;
+  margin-bottom: 4px;
+}
+
+.server-down-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary, #fff);
+  margin: 0;
+  letter-spacing: -0.3px;
+}
+
+.server-down-text {
+  font-size: 14px;
+  color: var(--text-secondary, rgba(255,255,255,0.55));
+  margin: 0;
+  line-height: 1.6;
+}
+
+.server-down-hint {
+  font-size: 12px;
+  color: var(--text-muted, rgba(255,255,255,0.35));
+  margin: 0;
+}
+
+/* Три точки анимация */
+.server-down-spinner {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin: 4px 0;
+}
+
+.server-down-spinner span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent, #5b8dee);
+  animation: dot-bounce 1.4s ease-in-out infinite;
+}
+
+.server-down-spinner span:nth-child(1) { animation-delay: 0s; }
+.server-down-spinner span:nth-child(2) { animation-delay: 0.2s; }
+.server-down-spinner span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes dot-bounce {
+  0%, 80%, 100% { transform: scale(0.7); opacity: 0.4; }
+  40%            { transform: scale(1);   opacity: 1; }
 }

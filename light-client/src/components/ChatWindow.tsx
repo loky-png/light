@@ -200,7 +200,7 @@ export default function ChatWindow({
       socket.off('messages:read', handleMessagesRead)
       socket.off('message:deleted', handleMessageDeleted)
     }
-  }, [chatId, userId, cachedMessages, loadMessages, onMessagesLoaded])
+  }, [chatId, userId, cachedMessages, loadMessages, onMessagesLoaded, toast])
 
   // Умный скролл: восстанавливаем позицию или скроллим вниз
   const messagesListRef = useRef<HTMLDivElement>(null)

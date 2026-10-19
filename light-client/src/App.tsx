@@ -43,6 +43,7 @@ export default function App() {
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null)
   const [chats, setChats] = useState<ChatSummary[]>([])
   const [isValidating, setIsValidating] = useState(true)
+  const [serverDown, setServerDown] = useState(false)
   const [userStatuses, setUserStatuses] = useState<Record<string, UserStatus>>({})
   const [messagesCache, setMessagesCache] = useState<Record<string, Message[]>>({})
   const [scrollPositions, setScrollPositions] = useState<Record<string, number>>({})
@@ -59,7 +60,7 @@ export default function App() {
   }, [user])
 
   const loadChats = async (authToken?: string) => {
-    const currentToken = authToken || token
+    const currentToken = authToken ?? token
     if (!currentToken) {
       return
     }
@@ -75,6 +76,12 @@ export default function App() {
       console.error('Load chats error:', error)
     }
   }
+
+  // Ref для loadChats чтобы использовать внутри useEffect без stale closure
+  const loadChatsRef = useRef(loadChats)
+  useEffect(() => {
+    loadChatsRef.current = loadChats
+  })
 
   useEffect(() => {
     const validateToken = async () => {
@@ -121,13 +128,13 @@ export default function App() {
       } catch (error) {
         console.error('Token validation error:', error)
 
-        if (storedUser) {
-          setToken(storedToken)
-          setUser(storedUser)
-        } else {
-          clearStoredToken()
-          clearStoredUser()
-        }
+        // Сервер недоступен — не логиним, показываем экран входа.
+        // Это нормальная ситуация: сервер упал, токен мог устареть.
+        // Пользователь должен войти заново когда сервер поднимется.
+        clearStoredToken()
+        clearStoredUser()
+        setToken(null)
+        setUser(null)
       } finally {
         setIsValidating(false)
       }
@@ -186,11 +193,22 @@ export default function App() {
     }
 
     const handleMessageDeleted = () => {
-      void loadChats(token)
+      void loadChatsRef.current(token)
     }
 
     const handleReconnect = () => {
-      void loadChats(token)
+      setServerDown(false)
+      void loadChatsRef.current(token)
+    }
+
+    // Сервер недоступен после нескольких ошибок подряд
+    const handleServerDown = () => {
+      setServerDown(true)
+    }
+
+    // Соединение восстановлено — убираем оверлей
+    const handleConnected = () => {
+      setServerDown(false)
     }
 
     socket.on('message:new', handleMessageNew)
@@ -200,8 +218,10 @@ export default function App() {
     socket.on('messages:read', handleMessagesRead)
     socket.on('message:deleted', handleMessageDeleted)
     window.addEventListener('socket:reconnect', handleReconnect)
+    window.addEventListener('socket:server_down', handleServerDown)
+    window.addEventListener('socket:connected', handleConnected)
 
-    void loadChats(token)
+    void loadChatsRef.current(token)
 
     const statusInterval = window.setInterval(() => {
       const now = Date.now()
@@ -231,6 +251,8 @@ export default function App() {
     return () => {
       window.clearInterval(statusInterval)
       window.removeEventListener('socket:reconnect', handleReconnect)
+      window.removeEventListener('socket:server_down', handleServerDown)
+      window.removeEventListener('socket:connected', handleConnected)
       socket.off('message:new', handleMessageNew)
       socket.off('chat:created', handleChatCreated)
       socket.off('user:online', handleUserOnline)
@@ -374,6 +396,32 @@ export default function App() {
                 </div>
               )}
             </main>
+
+            {/* Оверлей "Сервер недоступен" — внутри app-body, НЕ перекрывает TitleBar */}
+            {serverDown && (
+              <div className="server-down-overlay">
+                <div className="server-down-card">
+                  <div className="server-down-icon">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                      <line x1="12" y1="9" x2="12" y2="13"/>
+                      <line x1="12" y1="17" x2="12.01" y2="17"/>
+                    </svg>
+                  </div>
+                  <h2 className="server-down-title">Нет соединения</h2>
+                  <p className="server-down-text">
+                    Сервер временно недоступен.<br />
+                    Ведутся технические работы.
+                  </p>
+                  <div className="server-down-spinner">
+                    <span />
+                    <span />
+                    <span />
+                  </div>
+                  <p className="server-down-hint">Пытаемся переподключиться...</p>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </ToastProvider>
